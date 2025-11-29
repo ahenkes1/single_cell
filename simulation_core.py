@@ -14,6 +14,7 @@ PARAMS = {
     "max_speed": 1.5,
 }
 
+
 class PetriDish:
     """
     The Environment (Fields).
@@ -100,13 +101,10 @@ class Protozoa:
         self.y = y
         self.angle = random.uniform(0, 2 * math.pi)
         self.speed = 0.0
-
-        # Sensors (will be updated in sense)
+        self.energy = 1.0
+        self.last_mean_sense = 0.0
         self.val_l = 0.0
         self.val_r = 0.0
-
-        # Internal State
-        self.energy = 1.0
 
     def sense(self, dish: PetriDish):
         """
@@ -139,12 +137,29 @@ class Protozoa:
         # 3. Gradient
         gradient = self.val_l - self.val_r
 
+        # Temporal Gradient (Proposal 3)
+        # G_temp = Current - Last.
+        # If G_temp < 0 (getting worse), we want to turn.
+        temp_gradient = mean_sense - self.last_mean_sense
+        self.last_mean_sense = mean_sense
+
         # 4. Dynamics
         # Heading Update: d_theta = -lr * E * G
         # Add noise (Brownian tumbling) proportional to error magnitude
         # This allows escaping local minima (corners) where gradient is zero.
         noise = random.uniform(-0.5, 0.5) * abs(error)
-        d_theta = (-PARAMS["learning_rate"] * error * gradient) + noise
+
+        # If temporal gradient is negative (things getting worse), induce turning.
+        # We treat negative temporal gradient as a reason to "panic turn".
+        panic_turn = 0.0
+        if temp_gradient < -0.01:  # Threshold to avoid jitter
+            # Turn sharply if getting worse.
+            # Direction? Just turn away from current heading? Or random?
+            # Adding to noise is one way. Or adding a directed term if we knew where to go.
+            # Since we don't know where good is, we just increase tumbling.
+            panic_turn = random.uniform(-2.0, 2.0)
+
+        d_theta = (-PARAMS["learning_rate"] * error * gradient) + noise + panic_turn
         self.angle += d_theta
 
         # Normalize angle

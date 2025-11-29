@@ -42,14 +42,18 @@ We define $F$ based on the **Prediction Error** ($E$) relative to a **Target Set
 3.  **Error ($E$):** $$E = \mu - \rho$$
 4.  **Spatial Gradient ($G$):**
     $$G = s_L - s_R$$
+5.  **Temporal Gradient ($G_{temp}$):** (Proposal 3)
+    $$G_{temp} = \mu_t - \mu_{t-1}$$
+    Used to detect if conditions are worsening over time, triggering a "panic turn" even if spatial gradient is zero.
 
 ### D. The Dynamics (Action Update)
 The agent updates its heading ($\theta$) and speed ($v$) to minimize the error over time.
 
 **Heading Update:**
 The turning rate is proportional to the Error times the Gradient.
-$$\dot{\theta} = - \text{learning\_rate} \cdot E \cdot G + \text{Noise}$$
-*Noise* is added proportional to Error to allow escaping local minima (zero-gradient zones).
+$$\dot{\theta} = - \text{learning\_rate} \cdot E \cdot G + \text{Noise} + \text{Panic}$$
+*Noise* is added proportional to Error.
+*Panic* is a large random turn added if $G_{temp} < -0.01$ (conditions getting worse).
 
 **Speed Update:**
 The agent conserves energy. It only moves when "anxious" (high error).
@@ -109,6 +113,7 @@ The code should be organized into separate files to ensure no file exceeds 200 l
     - Compute `mean_sense` ($\mu$).
     - Compute `error` ($E = \mu - \rho$).
     - Compute `gradient` ($G = s_L - s_R$).
+    - **Temporal Logic:** Compare current mean sense to last frame. If getting worse ($< -0.01$), add extra random turning force ("Panic Turn").
     - Update Angle: `angle += -learning_rate * error * gradient`.
     - Update Speed: `speed = abs(error) * max_speed`.
     - Update Position: 
