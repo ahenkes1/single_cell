@@ -5,6 +5,10 @@ use crate::simulation::params::{
 use rand::Rng;
 use std::f64::consts::PI;
 
+/// Represents the single-cell organism (Agent) using Active Inference.
+///
+/// The agent minimizes Variational Free Energy by minimizing the difference (error)
+/// between its sensed nutrient concentration and its homeostatic set-point.
 #[derive(Debug, Clone)]
 pub struct Protozoa {
     pub x: f64,
@@ -18,6 +22,7 @@ pub struct Protozoa {
 }
 
 impl Protozoa {
+    /// Creates a new Protozoa agent at the given position.
     #[must_use]
     pub fn new(x: f64, y: f64) -> Self {
         let mut rng = rand::rng();
@@ -33,6 +38,9 @@ impl Protozoa {
         }
     }
 
+    /// Updates the agent's sensory inputs based on the current environment.
+    ///
+    /// Detects concentration at two points (left and right sensors).
     pub fn sense(&mut self, dish: &PetriDish) {
         // Left Sensor
         let theta_l = self.angle + SENSOR_ANGLE;
@@ -47,6 +55,14 @@ impl Protozoa {
         self.val_r = dish.get_concentration(x_r, y_r);
     }
 
+    /// Updates the agent's internal state, heading, speed, and position.
+    ///
+    /// This implements the Active Inference loop:
+    /// 1. Calculates Prediction Error (Sense - Target).
+    /// 2. Calculates Spatial and Temporal Gradients.
+    /// 3. Updates Heading to minimize error (Gradient Descent on F).
+    /// 4. Updates Speed based on "anxiety" (Magnitude of Error).
+    /// 5. Applies metabolic costs and intake.
     pub fn update_state(&mut self, dish: &PetriDish) {
         let mut rng = rand::rng();
 

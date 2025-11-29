@@ -1,5 +1,9 @@
 use rand::Rng;
 
+/// Represents a single Gaussian source of nutrients in the petri dish.
+///
+/// The source has a position, radius (spread), and intensity (concentration).
+/// It decays over time and moves slightly via Brownian motion.
 #[derive(Debug, Clone)]
 pub struct NutrientSource {
     pub x: f64,
@@ -10,6 +14,7 @@ pub struct NutrientSource {
 }
 
 impl NutrientSource {
+    /// Creates a new random nutrient source within the given bounds.
     fn random(width: f64, height: f64) -> Self {
         let mut rng = rand::rng();
         let margin = 10.0;
@@ -23,6 +28,10 @@ impl NutrientSource {
     }
 }
 
+/// Represents the simulation environment (the "dish").
+///
+/// Contains multiple `NutrientSource`s and handles their dynamics (decay, movement, respawn).
+/// It calculates the aggregate nutrient concentration at any point.
 pub struct PetriDish {
     pub width: f64,
     pub height: f64,
@@ -30,6 +39,7 @@ pub struct PetriDish {
 }
 
 impl PetriDish {
+    /// Creates a new Petri dish with the specified dimensions and random nutrient sources.
     #[must_use]
     pub fn new(width: f64, height: f64) -> Self {
         let mut rng = rand::rng();
@@ -45,6 +55,10 @@ impl PetriDish {
         }
     }
 
+    /// Calculates the nutrient concentration at a specific coordinate (x, y).
+    ///
+    /// Returns the sum of Gaussian contributions from all sources.
+    /// If the coordinate is outside the bounds, returns -1.0 (Toxic Void).
     #[must_use]
     pub fn get_concentration(&self, x: f64, y: f64) -> f64 {
         if x < 0.0 || x > self.width || y < 0.0 || y > self.height {
@@ -65,6 +79,7 @@ impl PetriDish {
         concentration.clamp(0.0, 1.0)
     }
 
+    /// Updates the state of the environment (nutrient decay, brownian motion, regrowth).
     pub fn update(&mut self) {
         let brownian_step = 0.5;
         let respawn_threshold = 0.05;
