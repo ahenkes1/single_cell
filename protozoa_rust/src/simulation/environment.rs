@@ -6,6 +6,7 @@ pub struct NutrientSource {
     pub y: f64,
     pub radius: f64,
     pub intensity: f64,
+    pub decay_rate: f64,
 }
 
 impl NutrientSource {
@@ -15,8 +16,9 @@ impl NutrientSource {
         Self {
             x: rng.random_range(margin..width - margin),
             y: rng.random_range(margin..height - margin),
-            radius: rng.random_range(5.0..15.0),
+            radius: rng.random_range(2.5..8.0),
             intensity: rng.random_range(0.5..1.0),
+            decay_rate: rng.random_range(0.990..0.998),
         }
     }
 }
@@ -64,14 +66,13 @@ impl PetriDish {
     }
 
     pub fn update(&mut self) {
-        let decay_factor = 0.995;
         let brownian_step = 0.5;
         let respawn_threshold = 0.05;
         let mut rng = rand::rng();
 
         for i in 0..self.sources.len() {
             // Entropy
-            self.sources[i].intensity *= decay_factor;
+            self.sources[i].intensity *= self.sources[i].decay_rate;
 
             // Brownian Motion
             self.sources[i].x += rng.random_range(-brownian_step..brownian_step);
