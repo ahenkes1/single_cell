@@ -70,7 +70,7 @@ cargo clippy -- -D warnings
 ## 🧠 How it Works
 The agent follows the equation:
 $$
-\dot{\theta} \propto - \text{Error} \times \text{Gradient}
+\dot{\theta} \propto - \mathrm{Error} \times \mathrm{Gradient}
 $$
 
 1.  **Error:** The difference between current sensing and target (0.8 concentration).
