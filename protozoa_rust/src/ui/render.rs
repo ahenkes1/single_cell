@@ -31,7 +31,7 @@ pub fn draw_ui(f: &mut Frame, grid_lines: Vec<String>, hud_info: &str) {
 
     let field = Paragraph::new(text)
         .block(Block::default().borders(Borders::NONE))
-        .style(Style::default().fg(Color::White).bg(Color::Black));
+        .style(Style::default().fg(Color::White).bg(Color::Reset));
     
     f.render_widget(field, chunks[1]);
 }
