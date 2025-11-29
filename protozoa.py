@@ -100,6 +100,9 @@ class Protozoa:
         self.val_l = 0.0
         self.val_r = 0.0
 
+        # Internal State
+        self.energy = 1.0
+
     def sense(self, dish: PetriDish):
         """
         Read chemical gradients from the dish.
@@ -133,7 +136,10 @@ class Protozoa:
 
         # 4. Dynamics
         # Heading Update: d_theta = -lr * E * G
-        d_theta = -PARAMS['learning_rate'] * error * gradient
+        # Add noise (Brownian tumbling) proportional to error magnitude
+        # This allows escaping local minima (corners) where gradient is zero.
+        noise = random.uniform(-0.5, 0.5) * abs(error)
+        d_theta = (-PARAMS['learning_rate'] * error * gradient) + noise
         self.angle += d_theta
 
         # Normalize angle
@@ -141,6 +147,17 @@ class Protozoa:
 
         # Speed Update: v = max_speed * |E|
         self.speed = PARAMS['max_speed'] * abs(error)
+
+        # Metabolic Update (Energy)
+        # Consumes energy to move, gains energy from nutrients.
+        metabolic_cost = 0.001 + (0.005 * (self.speed / PARAMS['max_speed']))
+        intake = 0.01 * mean_sense
+        self.energy = self.energy - metabolic_cost + intake
+        self.energy = max(0.0, min(1.0, self.energy))
+
+        # If energy is 0, agent is exhausted (cannot move fast)
+        if self.energy <= 0.01:
+            self.speed *= 0.1
 
         # Position Update
         self.x += self.speed * math.cos(self.angle)
@@ -262,7 +279,8 @@ class Simulation:
             f"Sens: {(self.agent.val_l + self.agent.val_r)/2:.2f} | "
             f"Tgt: {PARAMS['target']:.2f} | "
             f"Err: {((self.agent.val_l + self.agent.val_r)/2 - PARAMS['target']):.2f} | "
-            f"Spd: {self.agent.speed:.2f}"
+            f"Spd: {self.agent.speed:.2f} | "
+            f"Egy: {self.agent.energy:.2f}"
         )
         try:
             self.stdscr.addstr(0, 0, hud, curses.A_REVERSE)

@@ -29,6 +29,7 @@ It has **Stereo Vision** (two chemical receptors) to detect local gradients.
 * **Sensor Angle ($\delta$):** Offset angle.
 * **Left Sensor ($s_L$):** Located at $\theta + \delta$.
 * **Right Sensor ($s_R$):** Located at $\theta - \delta$.
+* **Energy (ATP):** Internal energy store (0.0 to 1.0). Depletes with movement, refills with nutrient intake.
 
 ### C. The Active Inference Engine (Behavior)
 The Agent operates by minimizing **Variational Free Energy ($F$)**.
@@ -46,11 +47,13 @@ The agent updates its heading ($\theta$) and speed ($v$) to minimize the error o
 
 **Heading Update:**
 The turning rate is proportional to the Error times the Gradient.
-$$\dot{\theta} = - \text{learning\_rate} \cdot E \cdot G$$
+$$\dot{\theta} = - \text{learning\_rate} \cdot E \cdot G + \text{Noise}$$
+*Noise* is added proportional to Error to allow escaping local minima (zero-gradient zones).
 
 **Speed Update:**
 The agent conserves energy. It only moves when "anxious" (high error).
 $$v = \text{max\_speed} \cdot |E|$$
+*Modulation:* Speed is reduced if Energy is depleted.
 
 ---
 
