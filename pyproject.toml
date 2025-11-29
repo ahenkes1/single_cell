@@ -1,0 +1,13 @@
+[project]
+name = "single-cell"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pylint>=4.0.3",
+    "pytest>=9.0.1",
+]
