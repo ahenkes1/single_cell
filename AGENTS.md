@@ -2,10 +2,10 @@
 
 ## 1. Project Overview
 **Title:** Protozoa
-**Platform:** Linux Terminal (Python + `curses`)
+**Platform:** Linux Terminal (Rust + `ratatui`)
 **Genre:** Biological Simulation / Zero-Player Game
 
-**Concept:** A real-time simulation of a single-cell organism (the Agent) living in a petri dish. The environment consists of continuous chemical gradients (Nutrients). The Agent navigates this world not through hard-coded rules (e.g., "If food is close, move to it"), but using the **Free Energy Principle (FEP)**. 
+**Concept:** A real-time simulation of a single-cell organism (the Agent) living in a petri dish. The environment consists of continuous chemical gradients (Nutrients). The Agent navigates this world not through hard-coded rules (e.g., "If food is close, move to it"), but using the **Free Energy Principle (FEP)**.
 
 The Agent minimizes the difference between its *genetic expectation* of the world (Homeostasis) and its *actual sensory input*. This results in emergent survival behaviors: seeking food when hungry, resting when satiated, and avoiding extremes.
 
@@ -42,7 +42,7 @@ We define $F$ based on the **Prediction Error** ($E$) relative to a **Target Set
 3.  **Error ($E$):** $$E = \mu - \rho$$
 4.  **Spatial Gradient ($G$):**
     $$G = s_L - s_R$$
-5.  **Temporal Gradient ($G_{temp}$):** (Proposal 3)
+5.  **Temporal Gradient ($G_{temp}$):**
     $$G_{temp} = \mu_t - \mu_{t-1}$$
     Used to detect if conditions are worsening over time, triggering a "panic turn" even if spatial gradient is zero.
 
@@ -60,86 +60,51 @@ The agent conserves energy. It only moves when "anxious" (high error).
 $$v = \text{max\_speed} \cdot |E|$$
 *Modulation:* Speed is reduced (50%) if Energy is depleted (< 1%).
 
-**Metabolism (Proposal A Tuning):**
-*   **Cost:** Reduced to ~0.0025/tick (from ~0.006).
-*   **Intake:** Increased to 0.03 * mean_sense (from 0.01).
+**Metabolism:**
+*   **Cost:** 0.0005 + (0.0025 * speed_ratio)
+*   **Intake:** 0.03 * mean_sense
 
 ---
 
-## 3. Implementation Plan & Checklist
+## 3. Rust Implementation Plan & Checklist
 
-### Class Structure
-The code should be organized into separate files to ensure no file exceeds 200 lines of code.
-*   `simulation_core.py`: Contains `PetriDish` and `Protozoa` logic.
-*   `protozoa.py`: Contains `Simulation` (visualization) and entry point.
+### Architecture (Modules)
+The project structure is strictly modularized to ensure files remain under 200 LOC.
 
-### Checklist for Coding Agent
+*   `src/main.rs`: Entry point and event loop.
+*   `src/simulation/`:
+    *   `params.rs`: Hyperparameters.
+    *   `environment.rs`: `PetriDish` and `NutrientSource` logic.
+    *   `agent.rs`: `Protozoa` FEP logic.
+*   `src/ui/`:
+    *   `field.rs`: Parallelized field calculation (`rayon`).
+    *   `render.rs`: `ratatui` draw logic.
 
-#### Step 1: The Environment (`PetriDish` Class)
-- [x] **Initialization:**
-    - Accept `width` and `height` (floats, e.g., 100.0).
-    - Initialize a list of nutrient sources (`sources`). Each source is a dict: `{x, y, radius, intensity}`.
-    - Create 5-10 random sources on init.
-    - **Safe Zone:** Spawn sources at least 10 units away from edges.
-- [x] **Math Helper `get_concentration(x, y)`:**
-    - Input: float x, float y.
-    - Logic: Sum the Gaussian contributions of all sources at this point.
-    - **Boundary Logic:** Return `-1.0` if x or y is out of bounds.
-    - Output: Float clipped between 0.0 and 1.0 (or -1.0 if OOB).
-- [x] **Dynamics `update()`:**
-    - Entropy: Reduce the `intensity` of all sources by a small decay factor (e.g., 0.995) every frame.
-    - Brownian Motion: Randomly jiggle the `x, y` of sources slightly.
-    - Regrowth: If a source fades below a threshold, respawn it at a new random location to keep the simulation running.
+### Checklist
 
-#### Step 2: The FEP Agent (`Protozoa` Class)
-- [x] **Initialization:**
-    - `x, y`: Center of world.
-    - `angle`: Random 0 to $2\pi$.
-    - `speed`: 0.0.
-    - **Hyperparameters:**
-        - `target` ($\rho$): 0.8
-        - `sensor_dist`: 2.0
-        - `sensor_angle`: 0.5 radians
-        - `learning_rate`: 0.15 (Turn speed)
-        - `max_speed`: 1.5
-- [x] **Method `sense(dish)`:**
-    - Calculate world coordinates for Left Sensor:
-        $$x_L = x + d \cdot \cos(\theta + \delta)$$
-        $$y_L = y + d \cdot \sin(\theta + \delta)$$
-    - Calculate world coordinates for Right Sensor (use $\theta - \delta$).
-    - Query `dish.get_concentration` for both points.
-    - Store `val_L` and `val_R`.
-- [x] **Method `update_state()` (The FEP Core):**
-    - Compute `mean_sense` ($\mu$).
-    - Compute `error` ($E = \mu - \rho$).
-    - Compute `gradient` ($G = s_L - s_R$).
-    - **Temporal Logic:** Compare current mean sense to last frame. If getting worse ($< -0.01$), add extra random turning force ("Panic Turn").
-    - Update Angle: `angle += -learning_rate * error * gradient`.
-    - Update Speed: `speed = abs(error) * max_speed`.
-    - Update Position: 
-        * `x += speed * cos(angle)`
-        * `y += speed * sin(angle)`
-    - **Boundary Check:** Clamp `x, y` to be within `0` and `dish.width/height`.
+#### Step 1: Domain Logic (TDD)
+- [ ] **Parameters:** Define `PARAMS` struct/constants.
+- [ ] **Environment (`PetriDish`):**
+    - TDD: Unit tests for `get_concentration` and random init.
+    - Implement: Gaussian sum, decay, regrowth.
+- [ ] **Agent (`Protozoa`):**
+    - TDD: Unit tests for movement, sensing, and energy.
+    - Implement: FEP core (Error, Gradient, Panic).
 
-#### Step 3: Visualization (`Simulation` Class)
-- [x] **Libraries:** Import `curses`, `time`, `math`, `random`.
-- [x] **Mapping:** Create a function to map continuous world coordinates to integer terminal row/col.
-- [x] **Render Logic:**
-    - **Field:** Iterate over terminal rows/cols. Convert back to world float coordinates. Query `dish.get_concentration`. Select ASCII char from map: ` .:-=+*#%@` (Empty to Dense).
-    - **Optimization:** Step by 1 pixel (high detail).
-    - **Agent:** Draw the agent character (e.g., `O` or `Q`) at its integer position. Draw sensor markers (`'` or `.`) to indicate heading.
-    - **HUD:** Draw a text bar at the top: `Sens: {:.2f} | Tgt: {:.2f} | Err: {:.2f} | Spd: {:.2f} | Egy: {:.2f}`.
-- [x] **Main Loop:**
-    - Initialize `curses` (noecho, nodelay, curs_set 0).
-    - Loop forever:
-        1.  `dish.update()`
-        2.  `agent.sense(dish)`
-        3.  `agent.update_state()`
-        4.  `render()`
-        5.  `time.sleep(0.05)`
-    - **Safety:** Use `try...finally` to ensure `curses.endwin()` is called even if the user crashes the script or hits Ctrl+C.
+#### Step 2: Parallel Rendering Engine
+- [ ] **Field Buffer:**
+    - TDD: Test parallel iterator logic.
+    - Implement: `compute_field_grid` using `rayon` to pre-calculate characters.
+- [ ] **TUI Components:**
+    - Implement: `draw_ui` using `ratatui`.
+
+#### Step 3: Application Loop
+- [ ] **Main Loop:**
+    - Setup `crossterm` backend.
+    - Integrate `update` -> `compute` -> `draw` loop.
+    - Handle input.
 
 #### Step 4: Quality Assurance
-- [x] **Linting:** Use `pylint`, `flake8`, `black` to ensure 10/10 code quality and PEP8 compliance.
-- [x] **Refactoring:** Ensure no file exceeds 200 lines of code by separating concerns (Simulation vs Core Logic).
-- [x] **Type Checking:** Use `mypy` to ensure type safety across the module.
+- [ ] **Linting:** `cargo clippy` (strict).
+- [ ] **Formatting:** `cargo fmt`.
+- [ ] **Tests:** `cargo test` passes.
