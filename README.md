@@ -1,43 +1,45 @@
 # Protozoa
-**Continuous Active Inference Simulation**
+**Continuous Active Inference Simulation (Rust Port)**
 
 Protozoa is a zero-player biological simulation where a single-cell agent navigates a nutrient-rich petri dish using the **Free Energy Principle (FEP)**. Unlike traditional AI that follows hard-coded rules, this agent operates by minimizing the difference between its genetic expectation (Homeostasis) and its actual sensory input.
 
 ![Platform](https://img.shields.io/badge/Platform-Linux%20Terminal-black)
-![Language](https://img.shields.io/badge/Language-Python-blue)
+![Language](https://img.shields.io/badge/Language-Rust-orange)
 ![License](https://img.shields.io/badge/License-AGPLv3-green)
 
 ## ✨ Features
 *   **Active Inference Engine:** The agent survives by minimizing "Free Energy" (Prediction Error).
 *   **Stereo Vision:** Two chemical sensors detect continuous gradients.
+*   **High Performance:** Parallelized field rendering using `rayon`.
+*   **Static Binary:** Ship a single executable with no external dependencies.
 *   **Dynamic Environment:** Food sources decay, move (Brownian motion), and regrow.
 *   **Metabolic System:** Managing energy (ATP) is crucial; exhaustion leads to death spirals.
 *   **Emergent Behavior:** Watch the agent panic, tumble, sprint, and graze without explicit instructions.
-*   **Optimized:** Built with `curses` for efficient terminal visualization.
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-This project uses **uv** for ultra-fast dependency management.
-
-1.  **Install `uv`** (if you haven't already):
-    ```bash
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    ```
-    *(Or use `pip install uv`)*
-
-2.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/yourusername/protozoa.git
-    cd protozoa
-    ```
+*   **Rust Toolchain:** Install via [rustup.rs](https://rustup.rs/).
 
 ### Running the Simulation
-Simply run the entry script. `uv` will automatically create the virtual environment and install dependencies (`curses` is part of the standard library on Linux/Mac).
+Clone the repository and run using `cargo`:
 
 ```bash
-uv run protozoa.py
+git clone https://github.com/yourusername/protozoa.git
+cd protozoa/protozoa_rust
+cargo run --release
 ```
+
+*(Note: Use `--release` for optimal frame rates)*
+
+### Static Compilation (Linux)
+To build a dependency-free static binary (MUSL):
+
+```bash
+rustup target add x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl
+```
+The binary will be located at `target/x86_64-unknown-linux-musl/release/protozoa_rust`.
 
 ## 🎮 Controls
 This is a **zero-player game**, meaning you watch life unfold.
@@ -46,27 +48,23 @@ This is a **zero-player game**, meaning you watch life unfold.
 ## 🛠️ Development
 
 ### Project Structure
-*   `protozoa.py`: Entry point and Visualization loop (`curses`).
-*   `simulation_core.py`: Core logic (Math, Physics, and Agent brain).
-*   `tests/`: Unit tests for TDD.
+*   `src/main.rs`: Entry point and visualization loop (`ratatui` + `crossterm`).
+*   `src/simulation/`: Core logic module.
+    *   `agent.rs`: Active Inference (FEP) logic.
+    *   `environment.rs`: Petri Dish and Nutrient physics.
+*   `src/ui/`: Rendering module.
+    *   `field.rs`: Parallelized grid computation (`rayon`).
 
 ### Running Tests
 ```bash
-uv run pytest
+cargo test
 ```
 
 ### Code Quality
-To ensure the simulation logic is robust, we enforce strict quality standards:
+We enforce strict linting and formatting:
 ```bash
-# Format code
-uv run black .
-
-# Linting
-uv run flake8 .
-uv run pylint simulation_core.py protozoa.py
-
-# Type Checking
-uv run mypy simulation_core.py protozoa.py
+cargo fmt
+cargo clippy -- -D warnings
 ```
 
 ## 🧠 How it Works

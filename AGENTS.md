@@ -83,28 +83,28 @@ The project structure is strictly modularized to ensure files remain under 200 L
 ### Checklist
 
 #### Step 1: Domain Logic (TDD)
-- [ ] **Parameters:** Define `PARAMS` struct/constants.
-- [ ] **Environment (`PetriDish`):**
+- [x] **Parameters:** Define `PARAMS` struct/constants.
+- [x] **Environment (`PetriDish`):**
     - TDD: Unit tests for `get_concentration` and random init.
     - Implement: Gaussian sum, decay, regrowth.
-- [ ] **Agent (`Protozoa`):**
+- [x] **Agent (`Protozoa`):**
     - TDD: Unit tests for movement, sensing, and energy.
     - Implement: FEP core (Error, Gradient, Panic).
 
 #### Step 2: Parallel Rendering Engine
-- [ ] **Field Buffer:**
+- [x] **Field Buffer:**
     - TDD: Test parallel iterator logic.
     - Implement: `compute_field_grid` using `rayon` to pre-calculate characters.
-- [ ] **TUI Components:**
+- [x] **TUI Components:**
     - Implement: `draw_ui` using `ratatui`.
 
 #### Step 3: Application Loop
-- [ ] **Main Loop:**
+- [x] **Main Loop:**
     - Setup `crossterm` backend.
     - Integrate `update` -> `compute` -> `draw` loop.
     - Handle input.
 
 #### Step 4: Quality Assurance
-- [ ] **Linting:** `cargo clippy` (strict).
-- [ ] **Formatting:** `cargo fmt`.
-- [ ] **Tests:** `cargo test` passes.
+- [x] **Linting:** `cargo clippy` (strict).
+- [x] **Formatting:** `cargo fmt`.
+- [x] **Tests:** `cargo test` passes.
