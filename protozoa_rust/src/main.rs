@@ -25,7 +25,7 @@ use crate::simulation::{
     environment::PetriDish,
     params::{DISH_HEIGHT, DISH_WIDTH, TARGET_CONCENTRATION},
 };
-use crate::ui::{field::compute_field_grid, render::draw_ui};
+use crate::ui::{field::compute_field_grid, render::{draw_ui, world_to_grid_coords}};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup Terminal
@@ -88,8 +88,7 @@ fn run_app<B: ratatui::backend::Backend>(
                 let scale_y = dish.height / rows as f64;
                 let scale_x = dish.width / cols as f64;
                 
-                let r = (agent.y / scale_y).floor() as usize;
-                let c = (agent.x / scale_x).floor() as usize;
+                let (r, c) = world_to_grid_coords(agent.x, agent.y, dish.width, dish.height, rows, cols);
                 
                 if r < rows && c < cols {
                      // Ensure we don't panic if row is missing (shouldn't happen)
