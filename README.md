@@ -25,7 +25,7 @@ Protozoa is a zero-player biological simulation where a single-cell agent naviga
 Clone the repository and run using `cargo`:
 
 ```bash
-git clone https://github.com/yourusername/protozoa.git
+git clone https://github.com/ahenkes1/protozoa.git
 cd protozoa/protozoa_rust
 cargo run --release
 ```
