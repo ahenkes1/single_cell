@@ -79,7 +79,7 @@ class Simulation:
         """Render the current state."""
         if not self.stdscr:
             return
-            
+
         self.stdscr.erase()
         self._render_field(rows, cols)
         self._render_agent(rows, cols)

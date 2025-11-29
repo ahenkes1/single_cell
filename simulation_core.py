@@ -3,7 +3,6 @@ Core simulation classes for Protozoa.
 """
 import random
 import math
-import curses
 from typing import List, Dict
 
 # Configure hyperparameters
@@ -35,9 +34,10 @@ class PetriDish:
 
     def _create_random_source(self) -> Dict[str, float]:
         """Generates a random nutrient source."""
+        margin = 10.0
         return {
-            "x": random.uniform(0, self.width),
-            "y": random.uniform(0, self.height),
+            "x": random.uniform(margin, self.width - margin),
+            "y": random.uniform(margin, self.height - margin),
             "radius": random.uniform(5.0, 15.0),
             "intensity": random.uniform(0.5, 1.0),
         }
@@ -47,6 +47,10 @@ class PetriDish:
         Calculates Nutrient Concentration C(x,y).
         Sum of Gaussian blobs.
         """
+        # Proposal 1: Toxic Void
+        if not (0 <= x <= self.width and 0 <= y <= self.height):
+            return -1.0
+
         concentration = 0.0
         for source in self.sources:
             d_x = x - source["x"]

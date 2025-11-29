@@ -37,6 +37,7 @@ We define $F$ based on the **Prediction Error** ($E$) relative to a **Target Set
 
 1.  **Sensation ($\mu$):** The average input.
     $$\mu = \frac{s_L + s_R}{2}$$
+    *Boundary Logic:* If a sensor is outside the dish, it returns `-1.0` (Toxic Void), creating a strong repulsion gradient.
 2.  **Target ($\rho$):** The homeostatic goal (e.g., 0.8 concentration).
 3.  **Error ($E$):** $$E = \mu - \rho$$
 4.  **Spatial Gradient ($G$):**
@@ -75,10 +76,12 @@ The code should be organized into separate files to ensure no file exceeds 200 l
     - Accept `width` and `height` (floats, e.g., 100.0).
     - Initialize a list of nutrient sources (`sources`). Each source is a dict: `{x, y, radius, intensity}`.
     - Create 5-10 random sources on init.
+    - **Safe Zone:** Spawn sources at least 10 units away from edges.
 - [x] **Math Helper `get_concentration(x, y)`:**
     - Input: float x, float y.
     - Logic: Sum the Gaussian contributions of all sources at this point.
-    - Output: Float clipped between 0.0 and 1.0.
+    - **Boundary Logic:** Return `-1.0` if x or y is out of bounds.
+    - Output: Float clipped between 0.0 and 1.0 (or -1.0 if OOB).
 - [x] **Dynamics `update()`:**
     - Entropy: Reduce the `intensity` of all sources by a small decay factor (e.g., 0.995) every frame.
     - Brownian Motion: Randomly jiggle the `x, y` of sources slightly.
