@@ -65,8 +65,8 @@ pub fn compute_quadrant_layout(area: Rect) -> Vec<Rect> {
 pub fn draw_dashboard(f: &mut Frame, grid_lines: Vec<String>, state: &DashboardState) {
     let quadrants = compute_quadrant_layout(f.area());
 
-    // === Top-Left: Petri Dish with Overlay ===
-    draw_petri_dish_panel(f, quadrants[0], grid_lines, state);
+    // === Top-Left: Petri Dish (no overlay - metrics moved to sidebar) ===
+    draw_petri_dish_panel(f, quadrants[0], grid_lines);
 
     // === Top-Right: Spatial Memory Grid ===
     draw_spatial_grid_panel(f, quadrants[1], state);
@@ -78,60 +78,18 @@ pub fn draw_dashboard(f: &mut Frame, grid_lines: Vec<String>, state: &DashboardS
     draw_landmarks_panel(f, quadrants[3], state);
 }
 
-#[allow(clippy::cast_possible_truncation)]
-fn draw_petri_dish_panel(
-    f: &mut Frame,
-    area: Rect,
-    grid_lines: Vec<String>,
-    state: &DashboardState,
-) {
+fn draw_petri_dish_panel(f: &mut Frame, area: Rect, grid_lines: Vec<String>) {
     let block = Block::default().title(" Petri Dish ").borders(Borders::ALL);
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Render field
+    // Render field only (no overlay - metrics moved to sidebar)
     let text: Vec<Line> = grid_lines
         .into_iter()
         .map(|s| Line::from(Span::raw(s)))
         .collect();
     let field = Paragraph::new(text);
     f.render_widget(field, inner);
-
-    // Metrics overlay (bottom-left of inner area)
-    let angle_deg = state.angle.to_degrees();
-    let overlay_lines = format_metrics_overlay(
-        state.energy,
-        state.mode,
-        state.prediction_error,
-        state.precision,
-        state.speed,
-        angle_deg,
-        state.sensor_left,
-        state.sensor_right,
-        state.temporal_gradient,
-    );
-
-    let overlay_height = overlay_lines.len() as u16 + 2;
-    let overlay_width = 23;
-    if inner.height > overlay_height && inner.width > overlay_width {
-        let overlay_area = Rect::new(
-            inner.x,
-            inner.y + inner.height - overlay_height,
-            overlay_width,
-            overlay_height,
-        );
-        let overlay_text: Vec<Line> = overlay_lines
-            .into_iter()
-            .map(|s| {
-                Line::from(Span::styled(
-                    s,
-                    Style::default().add_modifier(Modifier::BOLD),
-                ))
-            })
-            .collect();
-        let overlay = Paragraph::new(overlay_text).block(Block::default().borders(Borders::ALL));
-        f.render_widget(overlay, overlay_area);
-    }
 }
 
 #[allow(dead_code)] // Will be used when dashboard switches to sidebar layout
