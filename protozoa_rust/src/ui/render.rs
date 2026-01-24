@@ -14,7 +14,6 @@ use ratatui::{
 /// Computes the main + sidebar layout for the dashboard.
 /// Returns (`main_area`, `sidebar_panels`) where `sidebar_panels` is [Metrics, MCTS, Landmarks, Spatial].
 #[must_use]
-#[allow(dead_code)] // Will be used when dashboard switches to sidebar layout
 pub fn compute_sidebar_layout(area: Rect) -> (Rect, Vec<Rect>) {
     // Horizontal split: 70% main, 30% sidebar
     let horizontal = Layout::default()
@@ -40,6 +39,7 @@ pub fn compute_sidebar_layout(area: Rect) -> (Rect, Vec<Rect>) {
 
 /// Computes the four quadrant areas for the dashboard layout.
 #[must_use]
+#[allow(dead_code)] // Legacy layout, kept as fallback
 pub fn compute_quadrant_layout(area: Rect) -> Vec<Rect> {
     // Split vertically into top and bottom
     let vertical = Layout::default()
@@ -61,21 +61,25 @@ pub fn compute_quadrant_layout(area: Rect) -> Vec<Rect> {
     vec![top[0], top[1], bottom[0], bottom[1]]
 }
 
-/// Draws the full cognitive dashboard.
+/// Draws the full cognitive dashboard with sidebar layout.
 pub fn draw_dashboard(f: &mut Frame, grid_lines: Vec<String>, state: &DashboardState) {
-    let quadrants = compute_quadrant_layout(f.area());
+    let (main_area, sidebar) = compute_sidebar_layout(f.area());
 
-    // === Top-Left: Petri Dish (no overlay - metrics moved to sidebar) ===
-    draw_petri_dish_panel(f, quadrants[0], grid_lines);
+    // === Left: Petri Dish (full height) ===
+    draw_petri_dish_panel(f, main_area, grid_lines);
 
-    // === Top-Right: Spatial Memory Grid ===
-    draw_spatial_grid_panel(f, quadrants[1], state);
+    // === Right Sidebar ===
+    // [0] Metrics (top)
+    draw_metrics_panel(f, sidebar[0], state);
 
-    // === Bottom-Left: MCTS Planning ===
-    draw_mcts_panel(f, quadrants[2], state);
+    // [1] MCTS Planning
+    draw_mcts_panel(f, sidebar[1], state);
 
-    // === Bottom-Right: Landmarks ===
-    draw_landmarks_panel(f, quadrants[3], state);
+    // [2] Landmarks
+    draw_landmarks_panel(f, sidebar[2], state);
+
+    // [3] Spatial Memory (bottom, takes remaining space)
+    draw_spatial_grid_panel(f, sidebar[3], state);
 }
 
 fn draw_petri_dish_panel(f: &mut Frame, area: Rect, grid_lines: Vec<String>) {
@@ -92,7 +96,6 @@ fn draw_petri_dish_panel(f: &mut Frame, area: Rect, grid_lines: Vec<String>) {
     f.render_widget(field, inner);
 }
 
-#[allow(dead_code)] // Will be used when dashboard switches to sidebar layout
 fn draw_metrics_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
     let block = Block::default().title(" Agent ").borders(Borders::ALL);
     let inner = block.inner(area);
@@ -681,5 +684,63 @@ mod tests {
                 draw_spatial_grid_panel(f, area, &state);
             })
             .unwrap();
+    }
+
+    #[test]
+    fn test_draw_dashboard_uses_sidebar_layout() {
+        use crate::simulation::agent::AgentMode;
+        use crate::simulation::memory::CellPrior;
+        use crate::ui::DashboardState;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(100, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let state = DashboardState {
+            x: 50.0,
+            y: 25.0,
+            angle: 1.0,
+            speed: 0.5,
+            energy: 0.8,
+            mode: AgentMode::Exploring,
+            prediction_error: -0.2,
+            precision: 5.0,
+            sensor_left: 0.6,
+            sensor_right: 0.5,
+            temporal_gradient: 0.03,
+            spatial_grid: vec![CellPrior::default(); 200],
+            grid_width: 20,
+            grid_height: 10,
+            plan_details: vec![],
+            ticks_until_replan: 15,
+            landmarks: vec![],
+            landmark_count: 0,
+            nav_target_index: None,
+        };
+
+        let grid_lines: Vec<String> = (0..30).map(|_| ".".repeat(60)).collect();
+
+        terminal
+            .draw(|f| {
+                draw_dashboard(f, grid_lines.clone(), &state);
+            })
+            .unwrap();
+
+        // Verify buffer has content in expected regions
+        let buffer = terminal.backend().buffer();
+
+        // Check "Petri Dish" title is in top-left area
+        let petri_title_found =
+            (0..20).any(|x| buffer.cell((x, 0)).map(|c| c.symbol()).unwrap_or("") == "P");
+        assert!(petri_title_found, "Petri Dish title should be on left side");
+
+        // Check "Agent" title is in right sidebar area (x > 60)
+        let agent_title_found =
+            (60..100).any(|x| buffer.cell((x, 0)).map(|c| c.symbol()).unwrap_or("") == "A");
+        assert!(
+            agent_title_found,
+            "Agent panel title should be on right side"
+        );
     }
 }
