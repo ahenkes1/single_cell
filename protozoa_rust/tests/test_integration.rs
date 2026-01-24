@@ -7,6 +7,7 @@
 
 use protozoa_rust::simulation::agent::Protozoa;
 use protozoa_rust::simulation::environment::PetriDish;
+use protozoa_rust::ui::DashboardState;
 use std::time::Instant;
 
 const DISH_WIDTH: f64 = 100.0;
@@ -255,4 +256,24 @@ fn test_full_cognitive_stack_integration() {
     assert!(agent.angle.is_finite());
     assert!(agent.energy.is_finite());
     assert!(agent.tick_count == 1000);
+}
+
+#[test]
+fn test_dashboard_state_updates_during_simulation() {
+    let mut dish = PetriDish::new(DISH_WIDTH, DISH_HEIGHT);
+    let mut agent = Protozoa::new(DISH_WIDTH / 2.0, DISH_HEIGHT / 2.0);
+
+    // Run for several ticks
+    for _ in 0..100 {
+        dish.update();
+        agent.sense(&dish);
+        agent.update_state(&dish);
+    }
+
+    let state = DashboardState::from_agent(&agent, &dish);
+
+    // Verify state is populated
+    assert!(state.energy > 0.0);
+    assert!(state.spatial_grid.len() == 200); // 20x10
+    assert!(state.plan_details.len() == 3); // One per action
 }
