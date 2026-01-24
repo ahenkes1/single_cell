@@ -1,4 +1,4 @@
-use protozoa_rust::simulation::agent::Protozoa;
+use protozoa_rust::simulation::agent::{AgentMode, Protozoa};
 use protozoa_rust::simulation::environment::PetriDish;
 use protozoa_rust::simulation::params::{
     DISH_HEIGHT, DISH_WIDTH, EXHAUSTION_SPEED_FACTOR, EXHAUSTION_THRESHOLD, MAX_SPEED,
@@ -259,4 +259,20 @@ fn test_energy_increases_near_nutrients() {
         "Energy {} should increase when near nutrients (started at 0.5)",
         agent.energy
     );
+}
+
+#[test]
+fn test_agent_mode_exploring() {
+    let dish = PetriDish::new(DISH_WIDTH, DISH_HEIGHT);
+    let agent = Protozoa::new(50.0, 25.0);
+    // New agent with full energy should be exploring
+    assert!(matches!(agent.current_mode(&dish), AgentMode::Exploring));
+}
+
+#[test]
+fn test_agent_mode_exhausted() {
+    let dish = PetriDish::new(DISH_WIDTH, DISH_HEIGHT);
+    let mut agent = Protozoa::new(50.0, 25.0);
+    agent.energy = 0.005; // Below EXHAUSTION_THRESHOLD (0.01)
+    assert!(matches!(agent.current_mode(&dish), AgentMode::Exhausted));
 }

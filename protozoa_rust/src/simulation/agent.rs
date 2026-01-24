@@ -11,6 +11,22 @@ use crate::simulation::planning::{Action, AgentState, MCTSPlanner};
 use rand::Rng;
 use std::f64::consts::PI;
 
+/// Behavioral mode of the agent, derived from internal state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // Used by tests and future UI components
+pub enum AgentMode {
+    /// Normal gradient following with exploration bonus
+    Exploring,
+    /// In high-nutrient area with high precision
+    Exploiting,
+    /// Temporal gradient below panic threshold
+    Panicking,
+    /// Energy below exhaustion threshold
+    Exhausted,
+    /// Actively navigating toward a landmark
+    GoalNav,
+}
+
 /// Validates that a value is finite (not NaN or infinite).
 /// Returns a safe fallback (0.0) in release mode if the value is non-finite.
 #[inline]
@@ -252,5 +268,40 @@ impl Protozoa {
         // 18. Boundary Check
         self.x = self.x.clamp(0.0, dish.width);
         self.y = self.y.clamp(0.0, dish.height);
+    }
+
+    /// Returns the current behavioral mode derived from internal state.
+    #[must_use]
+    #[allow(dead_code)] // Used by tests and future UI components
+    pub fn current_mode(&self, _dish: &PetriDish) -> AgentMode {
+        // Check exhausted first (most critical)
+        if self.energy <= EXHAUSTION_THRESHOLD {
+            return AgentMode::Exhausted;
+        }
+
+        // Check if panicking (temporal gradient)
+        let mean_sense = f64::midpoint(self.val_l, self.val_r);
+        let temp_gradient = mean_sense - self.last_mean_sense;
+        if temp_gradient < PANIC_THRESHOLD {
+            return AgentMode::Panicking;
+        }
+
+        // Check goal navigation (low energy, has landmark)
+        if self.energy < MCTS_URGENT_ENERGY
+            && self
+                .episodic_memory
+                .best_distant_landmark(self.x, self.y, LANDMARK_VISIT_RADIUS)
+                .is_some()
+        {
+            return AgentMode::GoalNav;
+        }
+
+        // Check exploiting (high precision at current location)
+        let precision = self.spatial_priors.get_cell(self.x, self.y).precision();
+        if precision > 5.0 && mean_sense > 0.6 {
+            return AgentMode::Exploiting;
+        }
+
+        AgentMode::Exploring
     }
 }
