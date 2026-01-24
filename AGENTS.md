@@ -32,19 +32,43 @@ It has **Stereo Vision** (two chemical receptors) to detect local gradients.
 * **Energy (ATP):** Internal energy store (0.0 to 1.0). Depletes with movement, refills with nutrient intake.
 
 ### C. The Active Inference Engine (Behavior)
-The Agent operates by minimizing **Variational Free Energy ($F$)**.
-We define $F$ based on the **Prediction Error** ($E$) relative to a **Target Set-Point** ($\rho$).
+The Agent operates by minimizing **Variational Free Energy ($F$)** through gradient descent on Gaussian beliefs, and selects actions by minimizing **Expected Free Energy ($G$)**.
 
-1.  **Sensation ($\mu$):** The average input.
-    $$\mu = \frac{s_L + s_R}{2}$$
-    *Boundary Logic:* If a sensor is outside the dish, it returns `-1.0` (Toxic Void), creating a strong repulsion gradient.
-2.  **Target ($\rho$):** The homeostatic goal (e.g., 0.8 concentration).
-3.  **Error ($E$):** $$E = \mu - \rho$$
-4.  **Spatial Gradient ($G$):**
-    $$G = s_L - s_R$$
-5.  **Temporal Gradient ($G_{temp}$):**
-    $$G_{temp} = \mu_t - \mu_{t-1}$$
-    Used to detect if conditions are worsening over time, triggering a "panic turn" even if spatial gradient is zero.
+#### Generative Model
+The agent maintains an internal model $p(o, s) = p(o|s) \cdot p(s)$:
+- **Likelihood** $p(o|s)$: Observation function $g(s)$ with sensory precision $\Pi_o$
+- **Prior** $p(s)$: Preferences encoded as prior mean $\eta$ with precision $\Pi_\eta$
+
+#### Gaussian Beliefs
+The agent maintains approximate posterior beliefs $q(s) = \mathcal{N}(\mu, \Sigma)$:
+- **Belief Mean** $\mu$: (nutrient, x, y, angle) - the agent's best estimate of hidden states
+- **Belief Covariance** $\Sigma$: Uncertainty over each hidden state (diagonal for efficiency)
+
+#### Variational Free Energy
+$$F = \frac{1}{2}(o - g(\mu))^T \Pi_o (o - g(\mu)) + \frac{1}{2}(\mu - \eta)^T \Pi_\eta (\mu - \eta)$$
+
+Where:
+- $o = (s_L, s_R)$: Observations (left/right sensor readings)
+- $g(\mu)$: Predicted observations from beliefs
+- $\Pi_o$: Sensory precision (inverse observation variance, learned online)
+- $\eta$: Prior mean (nutrient target = 0.8, encodes preferences)
+- $\Pi_\eta$: Prior precision (strength of preferences)
+
+#### Belief Update (Gradient Descent)
+$$\frac{d\mu}{dt} = -\frac{\partial F}{\partial \mu} = \Pi_o \cdot J \cdot (o - g(\mu)) - \Pi_\eta \cdot (\mu - \eta)$$
+
+Where $J = \frac{\partial g}{\partial \mu}$ is the observation Jacobian.
+
+#### Sensory Precision Learning
+Precision is estimated online from prediction errors using exponential moving average:
+$$\sigma^2 \leftarrow (1-\alpha)\sigma^2 + \alpha \cdot \epsilon^2$$
+$$\Pi_o = 1/\sigma^2 \text{ (clamped to valid range)}$$
+
+#### Supporting Signals
+1.  **Spatial Gradient ($G$):** $$G = s_L - s_R$$
+2.  **Temporal Gradient ($G_{temp}$):** $$G_{temp} = \mu_t - \mu_{t-1}$$
+    Used to detect if conditions are worsening over time, triggering a "panic turn".
+3.  *Boundary Logic:* If a sensor is outside the dish, it returns `-1.0` (Toxic Void).
 
 ### D. Cognitive Architecture
 
@@ -53,6 +77,15 @@ The agent has a multi-layer cognitive architecture:
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    COGNITIVE ARCHITECTURE                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│  LAYER 0: ACTIVE INFERENCE ENGINE                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │ Beliefs: q(s) = N(μ, Σ) over (nutrient, x, y, angle)                ││
+│  │ Generative Model: p(o,s) = p(o|s) × p(s)                            ││
+│  │ Inference: Gradient descent on VFE: dμ/dt = -∂F/∂μ                  ││
+│  │ Precision: Learned online from prediction errors (EMA)              ││
+│  │ Action: Select by minimizing Expected Free Energy G(π)              ││
+│  └─────────────────────────────────────────────────────────────────────┘│
 ├─────────────────────────────────────────────────────────────────────────┤
 │  LAYER 1: SHORT-TERM MEMORY (Ring Buffer)                               │
 │  ┌─────────────────────────────────────────────────────────────────────┐│
@@ -78,23 +111,59 @@ The agent has a multi-layer cognitive architecture:
 │  LAYER 4: PLANNING (Monte Carlo Tree Search)                            │
 │  ┌─────────────────────────────────────────────────────────────────────┐│
 │  │ Rollouts: Simulate N=50 trajectories using learned spatial priors   ││
-│  │ Objective: Maximize expected free energy (exploit + explore)        ││
+│  │ Objective: Minimize Expected Free Energy (EFE)                      ││
 │  │ Actions: Discrete heading changes (-45°, 0°, +45°)                  ││
 │  │ Depth: 10 ticks lookahead                                           ││
 │  │ Triggers: Every 20 ticks OR when energy < 0.3 (urgent replanning)   ││
 │  └─────────────────────────────────────────────────────────────────────┘│
 ├─────────────────────────────────────────────────────────────────────────┤
 │  CONTROL INTEGRATION                                                     │
-│  base_error = sensation - TARGET_CONCENTRATION                          │
-│  precision_weighted_error = base_error × prior_precision                │
-│  exploration_bonus = EXPLORATION_SCALE / prior_precision                │
-│  goal_attraction = direction_to_best_landmark (if energy < 0.3)         │
-│  planned_heading = MCTS best action (updated every 20 ticks)            │
-│  d_theta = blend(reactive_control, planned_heading) + goal_attraction   │
+│  VFE = variational_free_energy(observations, beliefs, model)            │
+│  gradient = vfe_gradient(observations, beliefs, model)                  │
+│  beliefs.update(gradient, learning_rate)  # Perception                  │
+│  best_action = argmin_π G(π)              # Action selection            │
+│  d_theta = blend(reactive, planned) + goal_attraction + panic           │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### E. Mathematical Formulations
+
+#### Variational Free Energy (VFE)
+```
+F = ½ × Σᵢ πₒᵢ × (oᵢ - gᵢ(μ))² + ½ × Σⱼ πηⱼ × (μⱼ - ηⱼ)²
+
+Where:
+- πₒ = sensory precision (learned from prediction errors)
+- πη = prior precision (strength of preferences)
+- g(μ) = observation function (predicts sensors from beliefs)
+```
+
+#### VFE Gradient (for Belief Updates)
+```
+∂F/∂μ_nutrient = -πₒ_L × (o_L - pred_L) - πₒ_R × (o_R - pred_R) + πη × (μ_nutrient - η)
+
+Gradient includes Jacobian terms from observation function:
+∂g_L/∂nutrient = 1, ∂g_R/∂nutrient = 1
+∂g_L/∂angle = gradient_factor × cos(angle)
+∂g_R/∂angle = -gradient_factor × cos(angle)
+```
+
+#### Expected Free Energy (EFE) for Action Selection
+```
+G(π) = Risk + Ambiguity - Epistemic
+
+Risk = |μ_nutrient - η_nutrient|  # deviation from preferred state
+Ambiguity = σ²_nutrient           # uncertainty in predictions
+Epistemic = -log(σ²_nutrient)     # information gain (negative = good)
+```
+Lower EFE is better (we minimize G).
+
+#### Precision Learning (Exponential Moving Average)
+```
+σ² ← (1-α)σ² + α × ε²           # update variance estimate
+π = 1/σ²                         # precision = inverse variance
+π = clamp(π, MIN_PRECISION, MAX_PRECISION)
+```
 
 #### Spatial Prior Learning (Welford's Algorithm)
 ```
@@ -104,27 +173,7 @@ delta2 = observation - mean
 m2 += delta * delta2
 
 variance = m2 / (visits - 1)  # if visits >= 2
-precision = visits / (1 + variance)
 ```
-
-#### Precision-Weighted Control
-```
-base_error = mean_sense - TARGET_CONCENTRATION
-precision = prior.precision().clamp(MIN_PRECISION, MAX_PRECISION)
-precision_weighted_error = base_error × precision
-
-reactive_d_theta = -LEARNING_RATE × precision_weighted_error × gradient
-```
-
-#### MCTS Expected Free Energy
-For each trajectory τ = [state₁, state₂, ..., stateₙ]:
-```
-G(τ) = pragmatic + EXPLORATION_SCALE × epistemic
-
-pragmatic = Σ prior.mean × state.energy    # prefer high nutrients + survival
-epistemic = Σ 1 / prior.precision          # prefer uncertain regions (info gain)
-```
-Higher values are better (we maximize EFE).
 
 #### Landmark Reliability Decay
 ```
@@ -181,9 +230,15 @@ The project structure is strictly modularized to ensure files remain under 200 L
 
 *   `src/main.rs`: Entry point and event loop.
 *   `src/simulation/`:
-    *   `params.rs`: All hyperparameters organized into sections (Sensing, Behavior, Metabolism, Environment, Memory, Learning, Episodic, Planning).
+    *   `params.rs`: All hyperparameters organized into sections (Sensing, Behavior, Metabolism, Environment, Memory, Learning, Episodic, Planning, Active Inference).
     *   `environment.rs`: `PetriDish` and `NutrientSource` logic with epsilon guards.
-    *   `agent.rs`: `Protozoa` FEP logic with NaN propagation guards, memory systems, and MCTS integration.
+    *   `agent.rs`: `Protozoa` implementing Continuous Active Inference with Gaussian beliefs, VFE minimization, EFE action selection, memory systems, and MCTS integration.
+    *   `inference/`:
+        *   `mod.rs`: Inference module exports.
+        *   `beliefs.rs`: Gaussian belief state q(s) = N(μ, Σ) with update methods.
+        *   `generative_model.rs`: Generative model p(o,s) with observation function and Jacobian.
+        *   `free_energy.rs`: VFE computation, VFE gradient, EFE evaluation, prediction errors.
+        *   `precision.rs`: Online precision estimation from prediction errors.
     *   `memory/`:
         *   `mod.rs`: Memory module exports and `SensorSnapshot` type.
         *   `ring_buffer.rs`: Generic fixed-size ring buffer for short-term memory.
@@ -253,7 +308,21 @@ The project structure is strictly modularized to ensure files remain under 200 L
 #### Step 6: Quality Assurance
 - [x] **Linting:** `cargo clippy` (strict).
 - [x] **Formatting:** `cargo fmt`.
-- [x] **Tests:** `cargo test` passes (116 tests across 8 test files).
+- [x] **Tests:** `cargo test` passes (136 tests across 9 test files).
+
+### Mandatory Documentation Updates
+
+**CRITICAL: After EVERY implementation, update all relevant documentation:**
+
+- **CLAUDE.md** - Architecture overview, module descriptions, test counts
+- **AGENTS.md** - Mathematical formulas, algorithmic specifications
+- **README.md** - Features, configuration, user-facing documentation
+
+**Requirements:**
+- Documentation must accurately reflect the current implementation
+- Test counts must be updated when tests are added
+- New modules/features must be documented in all relevant files
+- Mathematical formulas must match the actual code
 
 ### Mandatory Verification After Every Implementation
 

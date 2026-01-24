@@ -8,7 +8,7 @@ Protozoa is a zero-player biological simulation where a single-cell agent naviga
 ![License](https://img.shields.io/badge/License-AGPLv3-green)
 
 ## ✨ Features
-*   **Active Inference Engine:** The agent survives by minimizing "Free Energy" (Prediction Error).
+*   **Genuine Active Inference:** Gaussian beliefs q(s) = N(μ, Σ), Variational Free Energy minimization, Expected Free Energy for action selection.
 *   **Stereo Vision:** Two chemical sensors detect continuous gradients.
 *   **Multi-Layer Memory:**
     *   **Short-term:** Ring buffer of 32 recent experiences
@@ -56,9 +56,10 @@ This is a **zero-player game**, meaning you watch life unfold.
 ### Project Structure
 *   `src/main.rs`: Entry point and visualization loop (`ratatui` + `crossterm`).
 *   `src/simulation/`: Core logic module.
-    *   `agent.rs`: Active Inference (FEP) logic with memory systems and MCTS planning.
+    *   `agent.rs`: Continuous Active Inference with Gaussian beliefs and VFE/EFE.
     *   `environment.rs`: Petri Dish and Nutrient physics.
     *   `params.rs`: All configurable hyperparameters.
+    *   `inference/`: Active Inference engine (beliefs, generative model, free energy, precision).
     *   `memory/`: Memory systems (ring buffer, spatial grid, episodic landmarks).
     *   `planning/`: MCTS planner with Expected Free Energy evaluation.
 *   `src/ui/`: Rendering module.
@@ -106,10 +107,13 @@ All simulation parameters are defined in `src/simulation/params.rs`:
 | `MCTS_ROLLOUTS` | 50 | Trajectories per planning step |
 | `MCTS_DEPTH` | 10 | Lookahead depth for planning |
 | `PLANNING_WEIGHT` | 0.3 | Blend of planned vs reactive control |
+| `BELIEF_LEARNING_RATE` | 0.15 | VFE gradient descent step size |
+| `INITIAL_SENSORY_PRECISION` | 5.0 | Starting sensor precision |
+| `NUTRIENT_PRIOR_PRECISION` | 2.0 | Strength of nutrient preference |
 
 ### Running Tests
 ```bash
-cargo test  # Runs 116 tests across 8 test files
+cargo test  # Runs 136 tests across 9 test files
 ```
 
 ### Code Quality
@@ -121,29 +125,30 @@ cargo clippy -- -D warnings
 
 ## 🧠 How it Works
 
-### Core Control Loop
-The agent blends reactive control with MCTS planning:
+### Continuous Active Inference
+The agent maintains Gaussian beliefs q(s) = N(μ, Σ) over hidden states (nutrient, position, heading) and updates them by minimizing Variational Free Energy:
 
 $$
-\dot{\theta} = (1-w_p) \cdot \dot{\theta}_{reactive} + w_p \cdot \dot{\theta}_{planned} + \text{exploration} + \text{goal}
+F = \frac{1}{2}(o - g(\mu))^T \Pi_o (o - g(\mu)) + \frac{1}{2}(\mu - \eta)^T \Pi_\eta (\mu - \eta)
 $$
 
-1.  **Error:** Precision-weighted difference between sensing and target (0.8).
-2.  **Gradient:** The difference between Left and Right sensors.
-3.  **Planning:** Every 20 ticks, MCTS evaluates 50 trajectories using learned spatial priors.
-4.  **Exploration:** Bonus for visiting uncertain regions (inverse precision).
-5.  **Goal Navigation:** When energy < 30%, navigate toward remembered landmarks.
-6.  **Panic:** Random tumble if conditions worsen rapidly (temporal gradient).
+### Each Tick
+1.  **Infer:** Gradient descent on VFE updates beliefs: dμ/dt = -∂F/∂μ
+2.  **Learn:** Update sensory precision from prediction errors
+3.  **Plan:** Evaluate actions by Expected Free Energy, select minimum
+4.  **Act:** Blend reactive control + planned action + exploration + goal attraction
+5.  **Panic:** Random tumble if conditions worsen rapidly (temporal gradient)
+
+### Action Selection via Expected Free Energy
+```
+G(π) = Risk + Ambiguity - Epistemic
+Risk = deviation from preferred nutrient (0.8)
+Ambiguity = uncertainty in predictions
+Epistemic = information gain (uncertainty reduction)
+```
+Lower EFE is better (we minimize G).
 
 ### Memory Systems
 - **Short-term:** 32-element ring buffer of recent experiences
 - **Long-term:** 20×10 grid learns nutrient expectations via Welford's algorithm
 - **Episodic:** Stores up to 8 high-nutrient landmarks with reliability decay
-
-### MCTS Expected Free Energy
-For each trajectory τ:
-```
-G(τ) = pragmatic + exploration_scale × epistemic
-pragmatic = Σ prior.mean × state.energy    (prefer nutrients + survival)
-epistemic = Σ 1/precision                   (prefer uncertainty reduction)
-```
