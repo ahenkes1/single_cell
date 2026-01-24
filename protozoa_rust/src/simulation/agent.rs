@@ -304,4 +304,12 @@ impl Protozoa {
 
         AgentMode::Exploring
     }
+
+    /// Returns ticks until next MCTS replan.
+    #[must_use]
+    #[allow(dead_code)] // Used by tests and future UI components
+    pub fn ticks_until_replan(&self) -> u64 {
+        let elapsed = self.tick_count.saturating_sub(self.last_plan_tick);
+        MCTS_REPLAN_INTERVAL.saturating_sub(elapsed)
+    }
 }

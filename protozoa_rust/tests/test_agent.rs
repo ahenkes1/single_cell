@@ -276,3 +276,17 @@ fn test_agent_mode_exhausted() {
     agent.energy = 0.005; // Below EXHAUSTION_THRESHOLD (0.01)
     assert!(matches!(agent.current_mode(&dish), AgentMode::Exhausted));
 }
+
+#[test]
+fn test_agent_ticks_until_replan() {
+    let dish = PetriDish::new(DISH_WIDTH, DISH_HEIGHT);
+    let mut agent = Protozoa::new(50.0, 25.0);
+
+    // Initial tick should trigger planning
+    agent.sense(&dish);
+    agent.update_state(&dish);
+
+    // Should be MCTS_REPLAN_INTERVAL - 1 ticks until next replan
+    assert!(agent.ticks_until_replan() > 0);
+    assert!(agent.ticks_until_replan() <= 20); // MCTS_REPLAN_INTERVAL
+}
