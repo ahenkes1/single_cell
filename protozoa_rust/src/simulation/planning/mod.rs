@@ -9,4 +9,4 @@
 
 mod mcts;
 
-pub use mcts::{Action, AgentState, MCTSPlanner};
+pub use mcts::{Action, ActionDetail, AgentState, MCTSPlanner};

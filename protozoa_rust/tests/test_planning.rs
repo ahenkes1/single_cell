@@ -170,3 +170,46 @@ fn test_step_energy_never_below_zero() {
 }
 
 const MAX_SPEED: f64 = 1.5;
+
+#[allow(unused_imports)] // Used by ActionDetail type
+use protozoa_rust::simulation::planning::ActionDetail;
+
+#[test]
+fn test_planner_exposes_top_trajectories() {
+    let priors: SpatialGrid<20, 10> = SpatialGrid::new(DISH_WIDTH, DISH_HEIGHT);
+    let state = AgentState::new(50.0, 25.0, 0.0, 1.0, 1.0);
+    let mut planner = MCTSPlanner::new();
+
+    planner.plan(&state, &priors);
+
+    let details = planner.last_plan_details();
+    assert_eq!(details.len(), 3); // One per action
+    for detail in details {
+        assert!(
+            detail.action == Action::TurnLeft
+                || detail.action == Action::Straight
+                || detail.action == Action::TurnRight
+        );
+    }
+}
+
+#[test]
+fn test_planner_exposes_efe_breakdown() {
+    let priors: SpatialGrid<20, 10> = SpatialGrid::new(DISH_WIDTH, DISH_HEIGHT);
+    let state = AgentState::new(50.0, 25.0, 0.0, 1.0, 1.0);
+    let mut planner = MCTSPlanner::new();
+
+    planner.plan(&state, &priors);
+
+    let details = planner.last_plan_details();
+    for detail in details {
+        // Total should equal pragmatic + epistemic (scaled)
+        let expected = detail.pragmatic_value + 0.3 * detail.epistemic_value;
+        assert!(
+            (detail.total_efe - expected).abs() < 0.01,
+            "EFE breakdown mismatch: total={} vs expected={}",
+            detail.total_efe,
+            expected
+        );
+    }
+}

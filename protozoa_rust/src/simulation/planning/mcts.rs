@@ -23,6 +23,21 @@ pub enum Action {
     TurnRight,
 }
 
+/// Details about a planned action for visualization.
+#[derive(Clone, Debug)]
+pub struct ActionDetail {
+    /// The action evaluated
+    pub action: Action,
+    /// Average total Expected Free Energy
+    pub total_efe: f64,
+    /// Pragmatic component (nutrient × energy)
+    pub pragmatic_value: f64,
+    /// Epistemic component (uncertainty reduction)
+    pub epistemic_value: f64,
+    /// Sample trajectory positions for visualization
+    pub sample_trajectory: Vec<(f64, f64)>,
+}
+
 impl Action {
     /// Returns the angular change in radians for this action.
     #[must_use]
@@ -108,6 +123,8 @@ impl AgentState {
 pub struct MCTSPlanner {
     /// Best action from last planning cycle
     best_action: Action,
+    /// Details from the last planning cycle
+    last_details: Vec<ActionDetail>,
 }
 
 impl Default for MCTSPlanner {
@@ -119,9 +136,10 @@ impl Default for MCTSPlanner {
 impl MCTSPlanner {
     /// Creates a new MCTS planner.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             best_action: Action::Straight,
+            last_details: Vec::new(),
         }
     }
 
@@ -129,6 +147,12 @@ impl MCTSPlanner {
     #[must_use]
     pub const fn best_action(&self) -> Action {
         self.best_action
+    }
+
+    /// Returns details of the last planning cycle.
+    #[must_use]
+    pub fn last_plan_details(&self) -> &[ActionDetail] {
+        &self.last_details
     }
 
     /// Plans the best action using Monte Carlo rollouts.
@@ -139,20 +163,39 @@ impl MCTSPlanner {
         let mut rng = rand::rng();
         let mut best_value = f64::NEG_INFINITY;
         let mut best_action = Action::Straight;
+        self.last_details.clear();
 
         // Evaluate each possible action
         for action in Action::all() {
-            let mut total_value = 0.0;
+            let mut total_pragmatic = 0.0;
+            let mut total_epistemic = 0.0;
+            let mut sample_traj = Vec::new();
 
             // Perform multiple rollouts
-            for _ in 0..MCTS_ROLLOUTS {
+            for i in 0..MCTS_ROLLOUTS {
                 let trajectory = self.rollout(*state, action, priors, &mut rng);
-                let value = self.expected_free_energy(&trajectory, priors);
-                total_value += value;
+                let (pragmatic, epistemic) = self.efe_components(&trajectory, priors);
+                total_pragmatic += pragmatic;
+                total_epistemic += epistemic;
+
+                if i == 0 {
+                    sample_traj = trajectory.iter().map(|s| (s.x, s.y)).collect();
+                }
             }
 
             #[allow(clippy::cast_precision_loss)] // MCTS_ROLLOUTS is small (50)
-            let avg_value = total_value / MCTS_ROLLOUTS as f64;
+            let avg_pragmatic = total_pragmatic / MCTS_ROLLOUTS as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let avg_epistemic = total_epistemic / MCTS_ROLLOUTS as f64;
+            let avg_value = avg_pragmatic + EXPLORATION_SCALE * avg_epistemic;
+
+            self.last_details.push(ActionDetail {
+                action,
+                total_efe: avg_value,
+                pragmatic_value: avg_pragmatic,
+                epistemic_value: avg_epistemic,
+                sample_trajectory: sample_traj,
+            });
 
             if avg_value > best_value {
                 best_value = avg_value;
@@ -193,6 +236,26 @@ impl MCTSPlanner {
         trajectory
     }
 
+    /// Computes pragmatic and epistemic components separately.
+    #[allow(clippy::unused_self)] // Method signature for future extensibility
+    fn efe_components(
+        &self,
+        trajectory: &[AgentState],
+        priors: &SpatialGrid<20, 10>,
+    ) -> (f64, f64) {
+        let mut pragmatic = 0.0;
+        let mut epistemic = 0.0;
+
+        for state in trajectory {
+            let prior = priors.get_cell(state.x, state.y);
+            pragmatic += prior.mean * state.energy;
+            let precision = prior.precision().max(MIN_PRECISION);
+            epistemic += 1.0 / precision;
+        }
+
+        (pragmatic, epistemic)
+    }
+
     /// Computes the Expected Free Energy for a trajectory.
     ///
     /// `EFE = pragmatic + epistemic`
@@ -202,24 +265,7 @@ impl MCTSPlanner {
     /// Higher values are better (we maximize EFE, not minimize).
     #[allow(clippy::unused_self)] // Method signature for future extensibility
     fn expected_free_energy(&self, trajectory: &[AgentState], priors: &SpatialGrid<20, 10>) -> f64 {
-        let mut pragmatic = 0.0;
-        let mut epistemic = 0.0;
-
-        for state in trajectory {
-            let prior = priors.get_cell(state.x, state.y);
-
-            // Pragmatic value: prefer high expected nutrients and surviving
-            // Weight by energy to prefer trajectories that maintain viability
-            pragmatic += prior.mean * state.energy;
-
-            // Epistemic value: prefer uncertain regions (information gain)
-            // Lower precision = higher epistemic value
-            let precision = prior.precision().max(MIN_PRECISION);
-            epistemic += 1.0 / precision;
-        }
-
-        // Combine pragmatic and epistemic components
-        // Higher is better
+        let (pragmatic, epistemic) = self.efe_components(trajectory, priors);
         pragmatic + EXPLORATION_SCALE * epistemic
     }
 }
