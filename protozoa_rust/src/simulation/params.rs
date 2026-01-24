@@ -99,3 +99,21 @@ pub const MCTS_REPLAN_INTERVAL: u64 = 20;
 pub const MCTS_URGENT_ENERGY: f64 = 0.3;
 /// Weight for blending planned action with reactive control
 pub const PLANNING_WEIGHT: f64 = 0.3;
+
+// === Active Inference Parameters ===
+/// Learning rate for belief updates via VFE gradient descent
+pub const BELIEF_LEARNING_RATE: f64 = 0.15;
+/// Maximum VFE value for speed scaling normalization
+pub const MAX_VFE: f64 = 5.0;
+/// Initial sensory precision (inverse observation variance)
+pub const INITIAL_SENSORY_PRECISION: f64 = 5.0;
+/// Prior precision on nutrient belief (strength of homeostatic preference)
+pub const NUTRIENT_PRIOR_PRECISION: f64 = 2.0;
+/// Minimum sensory precision (prevents over-trust of noisy sensors)
+pub const MIN_SENSORY_PRECISION: f64 = 0.5;
+/// Maximum sensory precision (prevents over-confidence)
+pub const MAX_SENSORY_PRECISION: f64 = 20.0;
+/// Uncertainty growth factor for predictive beliefs
+pub const UNCERTAINTY_GROWTH: f64 = 1.1;
+/// Uncertainty reduction factor after observation
+pub const UNCERTAINTY_REDUCTION: f64 = 0.95;
