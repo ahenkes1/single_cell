@@ -7,10 +7,11 @@ use protozoa_rust::ui::DashboardState;
 use protozoa_rust::ui::LandmarkSnapshot;
 use protozoa_rust::ui::field::compute_field_grid;
 use protozoa_rust::ui::render::{
-    compute_quadrant_layout, format_landmarks_list, format_mcts_summary, format_metrics_overlay,
-    render_spatial_grid_lines,
+    compute_quadrant_layout, compute_sidebar_layout, format_landmarks_list, format_mcts_summary,
+    format_metrics_overlay, petri_dish_grid_size, render_spatial_grid_lines,
 };
 use ratatui::layout::Rect;
+use ratatui::widgets::{Block, Borders};
 
 #[test]
 fn test_dashboard_state_from_agent() {
@@ -85,6 +86,18 @@ fn test_quadrant_layout_dimensions() {
     // Top-left should start at origin
     assert_eq!(quadrants[0].x, 0);
     assert_eq!(quadrants[0].y, 0);
+}
+
+#[test]
+fn test_petri_dish_grid_size_uses_main_panel() {
+    let area = Rect::new(0, 0, 120, 40);
+    let (main, _) = compute_sidebar_layout(area);
+    let inner = Block::default().borders(Borders::ALL).inner(main);
+
+    let (rows, cols) = petri_dish_grid_size(area);
+
+    assert_eq!(rows, inner.height as usize);
+    assert_eq!(cols, inner.width as usize);
 }
 
 #[test]

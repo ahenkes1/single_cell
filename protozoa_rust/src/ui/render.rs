@@ -37,6 +37,13 @@ pub fn compute_sidebar_layout(area: Rect) -> (Rect, Vec<Rect>) {
     (main, sidebar_panels.to_vec())
 }
 
+#[must_use]
+pub fn petri_dish_grid_size(area: Rect) -> (usize, usize) {
+    let (main_area, _) = compute_sidebar_layout(area);
+    let inner = Block::default().borders(Borders::ALL).inner(main_area);
+    (inner.height as usize, inner.width as usize)
+}
+
 /// Computes the four quadrant areas for the dashboard layout.
 #[must_use]
 #[allow(dead_code)] // Legacy layout, kept as fallback

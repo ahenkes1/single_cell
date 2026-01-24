@@ -28,7 +28,7 @@ use crate::simulation::{
 use crate::ui::{
     DashboardState,
     field::compute_field_grid,
-    render::{draw_dashboard, world_to_grid_coords},
+    render::{draw_dashboard, petri_dish_grid_size, world_to_grid_coords},
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,9 +91,8 @@ fn run_app<B: ratatui::backend::Backend>(
         terminal.draw(|f| {
             let area = f.area();
 
-            // Use top-left quadrant size for field computation
-            let field_rows = (area.height / 2).saturating_sub(2) as usize;
-            let field_cols = (area.width / 2).saturating_sub(2) as usize;
+            // Use the petri dish panel inner size for field computation
+            let (field_rows, field_cols) = petri_dish_grid_size(area);
 
             // Compute background in parallel
             let mut grid = compute_field_grid(dish, field_rows, field_cols);
