@@ -1,9 +1,19 @@
 use crate::simulation::environment::PetriDish;
 use crate::simulation::params::{
-    LEARNING_RATE, MAX_SPEED, SENSOR_ANGLE, SENSOR_DIST, TARGET_CONCENTRATION,
+    BASE_METABOLIC_COST, EXHAUSTION_SPEED_FACTOR, EXHAUSTION_THRESHOLD, INTAKE_RATE, LEARNING_RATE,
+    MAX_SPEED, NOISE_SCALE, PANIC_THRESHOLD, PANIC_TURN_RANGE, SENSOR_ANGLE, SENSOR_DIST,
+    SPEED_METABOLIC_COST, TARGET_CONCENTRATION,
 };
 use rand::Rng;
 use std::f64::consts::PI;
+
+/// Validates that a value is finite (not NaN or infinite).
+/// Returns a safe fallback (0.0) in release mode if the value is non-finite.
+#[inline]
+fn assert_finite(value: f64, context: &str) -> f64 {
+    debug_assert!(value.is_finite(), "Non-finite value in {context}: {value}");
+    if value.is_finite() { value } else { 0.0 }
+}
 
 /// Represents the single-cell organism (Agent) using Active Inference.
 ///
@@ -67,13 +77,13 @@ impl Protozoa {
         let mut rng = rand::rng();
 
         // 1. Sensation
-        let mean_sense = f64::midpoint(self.val_l, self.val_r);
+        let mean_sense = assert_finite(f64::midpoint(self.val_l, self.val_r), "mean_sense");
 
         // 2. Error (E = mu - rho)
-        let error = mean_sense - TARGET_CONCENTRATION;
+        let error = assert_finite(mean_sense - TARGET_CONCENTRATION, "error");
 
         // 3. Gradient (G = sL - sR)
-        let gradient = self.val_l - self.val_r;
+        let gradient = assert_finite(self.val_l - self.val_r, "gradient");
 
         // 4. Temporal Gradient
         let temp_gradient = mean_sense - self.last_mean_sense;
@@ -81,34 +91,36 @@ impl Protozoa {
 
         // 5. Dynamics
         // Noise proportional to error
-        let noise = rng.random_range(-0.5..0.5) * error.abs();
+        let noise = rng.random_range(-NOISE_SCALE..NOISE_SCALE) * error.abs();
 
         // Panic Turn
         let mut panic_turn = 0.0;
-        if temp_gradient < -0.01 {
-            panic_turn = rng.random_range(-2.0..2.0);
+        if temp_gradient < PANIC_THRESHOLD {
+            panic_turn = rng.random_range(-PANIC_TURN_RANGE..PANIC_TURN_RANGE);
         }
 
         // Heading Update
-        let d_theta = (-LEARNING_RATE * error * gradient) + noise + panic_turn;
+        let d_theta = assert_finite(
+            (-LEARNING_RATE * error * gradient) + noise + panic_turn,
+            "d_theta",
+        );
         self.angle += d_theta;
-        self.angle %= 2.0 * PI;
+        self.angle = self.angle.rem_euclid(2.0 * PI);
 
         // Speed Update
         self.speed = MAX_SPEED * error.abs();
 
         // Metabolism
-        // Cost: 0.0005 + (0.0025 * speed_ratio)
-        let metabolic_cost = 0.0005 + (0.0025 * (self.speed / MAX_SPEED));
-        // Intake: 0.03 * mean_sense
-        let intake = 0.03 * mean_sense;
+        let metabolic_cost =
+            BASE_METABOLIC_COST + (SPEED_METABOLIC_COST * (self.speed / MAX_SPEED));
+        let intake = INTAKE_RATE * mean_sense;
 
-        self.energy = self.energy - metabolic_cost + intake;
+        self.energy = assert_finite(self.energy - metabolic_cost + intake, "energy");
         self.energy = self.energy.clamp(0.0, 1.0);
 
         // Exhaustion check
-        if self.energy <= 0.01 {
-            self.speed *= 0.5;
+        if self.energy <= EXHAUSTION_THRESHOLD {
+            self.speed *= EXHAUSTION_SPEED_FACTOR;
         }
 
         // Position Update

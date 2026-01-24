@@ -51,18 +51,23 @@ The agent updates its heading ($\theta$) and speed ($v$) to minimize the error o
 
 **Heading Update:**
 The turning rate is proportional to the Error times the Gradient.
-$$\dot{\theta} = - \text{learning\_rate} \cdot E \cdot G + \text{Noise} + \text{Panic}$$
-*Noise* is added proportional to Error.
-*Panic* is a large random turn added if $G_{temp} < -0.01$ (conditions getting worse).
+$$\dot{\theta} = - \text{LEARNING\_RATE} \cdot E \cdot G + \text{Noise} + \text{Panic}$$
+*Noise* is scaled by `NOISE_SCALE` (0.5) and proportional to Error.
+*Panic* is a large random turn (±`PANIC_TURN_RANGE` radians) added if $G_{temp} <$ `PANIC_THRESHOLD` (-0.01).
 
 **Speed Update:**
 The agent conserves energy. It only moves when "anxious" (high error).
-$$v = \text{max\_speed} \cdot |E|$$
-*Modulation:* Speed is reduced (50%) if Energy is depleted (< 1%).
+$$v = \text{MAX\_SPEED} \cdot |E|$$
+*Modulation:* Speed is reduced by `EXHAUSTION_SPEED_FACTOR` (50%) if Energy ≤ `EXHAUSTION_THRESHOLD` (1%).
 
 **Metabolism:**
-*   **Cost:** 0.0005 + (0.0025 * speed_ratio)
-*   **Intake:** 0.03 * mean_sense
+*   **Cost:** `BASE_METABOLIC_COST` + (`SPEED_METABOLIC_COST` × speed_ratio) = 0.0005 + (0.0025 × speed_ratio)
+*   **Intake:** `INTAKE_RATE` × mean_sense = 0.03 × mean_sense
+
+**Numerical Safety:**
+*   All critical calculations are guarded by `assert_finite()` to prevent NaN propagation
+*   Angle normalization uses `rem_euclid(2π)` for numerical stability
+*   Gaussian sigma uses epsilon guard: `sigma_sq.max(f64::EPSILON)`
 
 ---
 
@@ -73,12 +78,12 @@ The project structure is strictly modularized to ensure files remain under 200 L
 
 *   `src/main.rs`: Entry point and event loop.
 *   `src/simulation/`:
-    *   `params.rs`: Hyperparameters.
-    *   `environment.rs`: `PetriDish` and `NutrientSource` logic.
-    *   `agent.rs`: `Protozoa` FEP logic.
+    *   `params.rs`: All hyperparameters organized into sections (Sensing, Behavior, Metabolism, Environment).
+    *   `environment.rs`: `PetriDish` and `NutrientSource` logic with epsilon guards.
+    *   `agent.rs`: `Protozoa` FEP logic with NaN propagation guards.
 *   `src/ui/`:
     *   `field.rs`: Parallelized field calculation (`rayon`).
-    *   `render.rs`: `ratatui` draw logic.
+    *   `render.rs`: `ratatui` draw logic with coordinate transformation.
 
 ### Checklist
 
@@ -108,3 +113,9 @@ The project structure is strictly modularized to ensure files remain under 200 L
 - [x] **Linting:** `cargo clippy` (strict).
 - [x] **Formatting:** `cargo fmt`.
 - [x] **Tests:** `cargo test` passes.
+
+---
+
+## See Also
+
+- [CLAUDE.md](CLAUDE.md) - Developer guidance with build commands, code style, and quick reference for working with the codebase

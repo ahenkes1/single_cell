@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Span, Line},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
 pub fn draw_ui(f: &mut Frame, grid_lines: Vec<String>, hud_info: &str) {
@@ -32,7 +32,7 @@ pub fn draw_ui(f: &mut Frame, grid_lines: Vec<String>, hud_info: &str) {
     let field = Paragraph::new(text)
         .block(Block::default().borders(Borders::NONE))
         .style(Style::default().fg(Color::White).bg(Color::Reset));
-    
+
     f.render_widget(field, chunks[1]);
 }
 
@@ -53,10 +53,10 @@ pub fn world_to_grid_coords(
     }
     let scale_y = height / rows as f64;
     let scale_x = width / cols as f64;
-    
+
     let r = ((y / scale_y).floor() as usize).min(rows - 1);
     let c = ((x / scale_x).floor() as usize).min(cols - 1);
-    
+
     (r, c)
 }
 
@@ -77,10 +77,18 @@ mod tests {
         assert_eq!(c, 10);
 
         // Case 2: Exact boundary (Right/Bottom edge)
-        // This is where it fails currently. If x = 100.0, scale_x = 5.0. 100/5 = 20. 
+        // This is where it fails currently. If x = 100.0, scale_x = 5.0. 100/5 = 20.
         // Valid indices are 0..19. So 20 is out of bounds.
         let (r_edge, c_edge) = world_to_grid_coords(width, height, width, height, rows, cols);
-        assert_eq!(r_edge, rows - 1, "Row index should be clamped to max valid index");
-        assert_eq!(c_edge, cols - 1, "Col index should be clamped to max valid index");
+        assert_eq!(
+            r_edge,
+            rows - 1,
+            "Row index should be clamped to max valid index"
+        );
+        assert_eq!(
+            c_edge,
+            cols - 1,
+            "Col index should be clamped to max valid index"
+        );
     }
 }

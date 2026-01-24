@@ -25,11 +25,11 @@ pub fn compute_field_grid(dish: &PetriDish, rows: usize, cols: usize) -> Vec<Str
                 let world_x = c as f64 * scale_x;
 
                 let val = dish.get_concentration(world_x, world_y);
-                
+
                 // Map 0.0..1.0 to index 0..9
                 let idx = (val * (CHARS.len() - 1) as f64).round() as usize;
                 let idx = idx.min(CHARS.len() - 1); // Safety clamp
-                
+
                 line.push(CHARS[idx]);
             }
             line

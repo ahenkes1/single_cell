@@ -11,14 +11,28 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy, rustfmt
+
+    - name: Check formatting
+      working-directory: ./protozoa_rust
+      run: cargo fmt --check
+
+    - name: Clippy (strict)
+      working-directory: ./protozoa_rust
+      run: cargo clippy -- -D warnings
+
     - name: Build
       working-directory: ./protozoa_rust
       run: cargo build --verbose
+
     - name: Run tests
       working-directory: ./protozoa_rust
       run: cargo test --verbose

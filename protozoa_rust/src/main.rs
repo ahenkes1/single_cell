@@ -16,16 +16,19 @@ use std::time::{Duration, Instant};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::simulation::{
     agent::Protozoa,
     environment::PetriDish,
     params::{DISH_HEIGHT, DISH_WIDTH, TARGET_CONCENTRATION},
 };
-use crate::ui::{field::compute_field_grid, render::{draw_ui, world_to_grid_coords}};
+use crate::ui::{
+    field::compute_field_grid,
+    render::{draw_ui, world_to_grid_coords},
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup Terminal
@@ -87,29 +90,41 @@ fn run_app<B: ratatui::backend::Backend>(
             if rows > 0 && cols > 0 {
                 let scale_y = dish.height / rows as f64;
                 let scale_x = dish.width / cols as f64;
-                
-                let (r, c) = world_to_grid_coords(agent.x, agent.y, dish.width, dish.height, rows, cols);
-                
+
+                let (r, c) =
+                    world_to_grid_coords(agent.x, agent.y, dish.width, dish.height, rows, cols);
+
                 if r < rows && c < cols {
-                     // Ensure we don't panic if row is missing (shouldn't happen)
-                     if let Some(line) = grid.get_mut(r) {
-                         if c < line.len() {
-                             line.replace_range(c..=c, "O");
-                             
-                             // Sensors (simple visualization)
-                             let sensor_r = (agent.angle.sin() * 2.0 / scale_y) as isize + r as isize;
-                             let sensor_c = (agent.angle.cos() * 2.0 / scale_x) as isize + c as isize;
-                             
-                             if sensor_r >= 0 && sensor_r < rows as isize && sensor_c >= 0 && sensor_c < cols as isize {
-                                 if let Some(s_line) = grid.get_mut(sensor_r as usize) {
-                                     let sc = sensor_c as usize;
-                                     if sc < s_line.len() {
-                                          s_line.replace_range(sc..=sc, ".");
-                                     }
-                                 }
-                             }
-                         }
-                     }
+                    // Ensure we don't panic if row is missing (shouldn't happen)
+                    if let Some(line) = grid.get_mut(r) {
+                        if c < line.len() {
+                            // SAFETY: The grid contains only ASCII characters (see CHARS in field.rs),
+                            // so byte indexing equals char indexing. If CHARS is ever extended to
+                            // include multi-byte characters, this must be changed to use char_indices().
+                            line.replace_range(c..=c, "O");
+
+                            // Sensors (simple visualization)
+                            // Use i64 for intermediate calculations to prevent overflow on large terminals
+                            let sensor_offset_r = (agent.angle.sin() * 2.0 / scale_y) as i64;
+                            let sensor_offset_c = (agent.angle.cos() * 2.0 / scale_x) as i64;
+                            let sensor_r = (r as i64).saturating_add(sensor_offset_r);
+                            let sensor_c = (c as i64).saturating_add(sensor_offset_c);
+
+                            if sensor_r >= 0
+                                && sensor_r < rows as i64
+                                && sensor_c >= 0
+                                && sensor_c < cols as i64
+                            {
+                                if let Some(s_line) = grid.get_mut(sensor_r as usize) {
+                                    let sc = sensor_c as usize;
+                                    if sc < s_line.len() {
+                                        // SAFETY: Same as above - ASCII-only grid
+                                        s_line.replace_range(sc..=sc, ".");
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

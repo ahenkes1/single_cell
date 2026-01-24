@@ -50,20 +50,33 @@ This is a **zero-player game**, meaning you watch life unfold.
 ### Project Structure
 *   `src/main.rs`: Entry point and visualization loop (`ratatui` + `crossterm`).
 *   `src/simulation/`: Core logic module.
-    *   `agent.rs`: Active Inference (FEP) logic.
+    *   `agent.rs`: Active Inference (FEP) logic with NaN guards.
     *   `environment.rs`: Petri Dish and Nutrient physics.
+    *   `params.rs`: All configurable hyperparameters.
 *   `src/ui/`: Rendering module.
     *   `field.rs`: Parallelized grid computation (`rayon`).
+    *   `render.rs`: TUI rendering and coordinate transformation.
+
+### Configuration
+All simulation parameters are defined in `src/simulation/params.rs`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `TARGET_CONCENTRATION` | 0.8 | Homeostatic set-point |
+| `LEARNING_RATE` | 0.15 | Gradient descent step size |
+| `MAX_SPEED` | 1.5 | Maximum movement speed |
+| `PANIC_THRESHOLD` | -0.01 | Temporal gradient trigger |
+| `EXHAUSTION_THRESHOLD` | 0.01 | Energy level for exhaustion |
 
 ### Running Tests
 ```bash
-cargo test
+cargo test  # Runs 22 tests
 ```
 
 ### Code Quality
-We enforce strict linting and formatting:
+We enforce strict linting and formatting (also in CI):
 ```bash
-cargo fmt
+cargo fmt --check
 cargo clippy -- -D warnings
 ```
 
