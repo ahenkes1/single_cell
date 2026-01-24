@@ -131,3 +131,6 @@ cython_debug/
 *.swp
 *.swo
 *~
+
+# Git worktrees
+.worktrees/
