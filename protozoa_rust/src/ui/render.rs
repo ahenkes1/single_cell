@@ -2,7 +2,7 @@ use crate::simulation::agent::AgentMode;
 use crate::simulation::memory::CellPrior;
 use crate::simulation::params::{MCTS_DEPTH, MCTS_ROLLOUTS};
 use crate::simulation::planning::{Action, ActionDetail};
-use crate::ui::LandmarkSnapshot;
+use crate::ui::{DashboardState, LandmarkSnapshot};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -13,7 +13,6 @@ use ratatui::{
 
 /// Computes the four quadrant areas for the dashboard layout.
 #[must_use]
-#[allow(dead_code)] // Used by tests and will be used by dashboard renderer
 pub fn compute_quadrant_layout(area: Rect) -> Vec<Rect> {
     // Split vertically into top and bottom
     let vertical = Layout::default()
@@ -33,6 +32,143 @@ pub fn compute_quadrant_layout(area: Rect) -> Vec<Rect> {
         .split(vertical[1]);
 
     vec![top[0], top[1], bottom[0], bottom[1]]
+}
+
+/// Draws the full cognitive dashboard.
+pub fn draw_dashboard(f: &mut Frame, grid_lines: Vec<String>, state: &DashboardState) {
+    let quadrants = compute_quadrant_layout(f.area());
+
+    // === Top-Left: Petri Dish with Overlay ===
+    draw_petri_dish_panel(f, quadrants[0], grid_lines, state);
+
+    // === Top-Right: Spatial Memory Grid ===
+    draw_spatial_grid_panel(f, quadrants[1], state);
+
+    // === Bottom-Left: MCTS Planning ===
+    draw_mcts_panel(f, quadrants[2], state);
+
+    // === Bottom-Right: Landmarks ===
+    draw_landmarks_panel(f, quadrants[3], state);
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn draw_petri_dish_panel(
+    f: &mut Frame,
+    area: Rect,
+    grid_lines: Vec<String>,
+    state: &DashboardState,
+) {
+    let block = Block::default().title(" Petri Dish ").borders(Borders::ALL);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // Render field
+    let text: Vec<Line> = grid_lines
+        .into_iter()
+        .map(|s| Line::from(Span::raw(s)))
+        .collect();
+    let field = Paragraph::new(text);
+    f.render_widget(field, inner);
+
+    // Metrics overlay (bottom-left of inner area)
+    let angle_deg = state.angle.to_degrees();
+    let overlay_lines = format_metrics_overlay(
+        state.energy,
+        state.mode,
+        state.prediction_error,
+        state.precision,
+        state.speed,
+        angle_deg,
+        state.sensor_left,
+        state.sensor_right,
+        state.temporal_gradient,
+    );
+
+    let overlay_height = overlay_lines.len() as u16 + 2;
+    let overlay_width = 23;
+    if inner.height > overlay_height && inner.width > overlay_width {
+        let overlay_area = Rect::new(
+            inner.x,
+            inner.y + inner.height - overlay_height,
+            overlay_width,
+            overlay_height,
+        );
+        let overlay_text: Vec<Line> = overlay_lines
+            .into_iter()
+            .map(|s| {
+                Line::from(Span::styled(
+                    s,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ))
+            })
+            .collect();
+        let overlay = Paragraph::new(overlay_text)
+            .block(Block::default().borders(Borders::ALL))
+            .style(Style::default().bg(Color::Black));
+        f.render_widget(overlay, overlay_area);
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_precision_loss)]
+fn draw_spatial_grid_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
+    let block = Block::default()
+        .title(" Spatial Memory ")
+        .borders(Borders::ALL);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // Calculate agent's grid cell
+    let agent_col = ((state.x / 100.0) * state.grid_width as f64).floor() as usize;
+    let agent_row = ((state.y / 50.0) * state.grid_height as f64).floor() as usize;
+    let agent_cell = Some((
+        agent_row.min(state.grid_height.saturating_sub(1)),
+        agent_col.min(state.grid_width.saturating_sub(1)),
+    ));
+
+    let lines = render_spatial_grid_lines(
+        &state.spatial_grid,
+        state.grid_width,
+        state.grid_height,
+        agent_cell,
+    );
+    let text: Vec<Line> = lines
+        .into_iter()
+        .map(|s| Line::from(Span::raw(s)))
+        .collect();
+    let grid = Paragraph::new(text);
+    f.render_widget(grid, inner);
+}
+
+fn draw_mcts_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
+    let block = Block::default()
+        .title(" MCTS Planning ")
+        .borders(Borders::ALL);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let lines = format_mcts_summary(&state.plan_details, state.ticks_until_replan);
+    let text: Vec<Line> = lines
+        .into_iter()
+        .map(|s| Line::from(Span::raw(s)))
+        .collect();
+    let summary = Paragraph::new(text);
+    f.render_widget(summary, inner);
+}
+
+fn draw_landmarks_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
+    let block = Block::default().title(" Landmarks ").borders(Borders::ALL);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let lines = format_landmarks_list(&state.landmarks, state.nav_target_index);
+    let text: Vec<Line> = lines
+        .into_iter()
+        .map(|s| Line::from(Span::raw(s)))
+        .collect();
+    let list = Paragraph::new(text);
+    f.render_widget(list, inner);
 }
 
 /// Formats the metrics overlay lines for the petri dish panel.
@@ -213,6 +349,7 @@ pub fn format_landmarks_list(
     lines
 }
 
+#[allow(dead_code)] // Legacy single-panel view, kept as fallback
 pub fn draw_ui(f: &mut Frame, grid_lines: Vec<String>, hud_info: &str) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)

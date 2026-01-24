@@ -23,11 +23,12 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use crate::simulation::{
     agent::Protozoa,
     environment::PetriDish,
-    params::{DISH_HEIGHT, DISH_WIDTH, TARGET_CONCENTRATION},
+    params::{DISH_HEIGHT, DISH_WIDTH},
 };
 use crate::ui::{
+    DashboardState,
     field::compute_field_grid,
-    render::{draw_ui, world_to_grid_coords},
+    render::{draw_dashboard, world_to_grid_coords},
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -80,63 +81,39 @@ fn run_app<B: ratatui::backend::Backend>(
         // 2. Render
         terminal.draw(|f| {
             let area = f.area();
-            let rows = area.height as usize - 1; // -1 for HUD
-            let cols = area.width as usize;
+
+            // Use top-left quadrant size for field computation
+            let field_rows = (area.height / 2).saturating_sub(2) as usize;
+            let field_cols = (area.width / 2).saturating_sub(2) as usize;
 
             // Compute background in parallel
-            let mut grid = compute_field_grid(dish, rows, cols);
+            let mut grid = compute_field_grid(dish, field_rows, field_cols);
 
-            // Overlay Agent
-            if rows > 0 && cols > 0 {
-                let scale_y = dish.height / rows as f64;
-                let scale_x = dish.width / cols as f64;
+            // Overlay Agent on field
+            if field_rows > 0 && field_cols > 0 {
+                let (r, c) = world_to_grid_coords(
+                    agent.x,
+                    agent.y,
+                    dish.width,
+                    dish.height,
+                    field_rows,
+                    field_cols,
+                );
 
-                let (r, c) =
-                    world_to_grid_coords(agent.x, agent.y, dish.width, dish.height, rows, cols);
-
-                if r < rows && c < cols {
-                    // Ensure we don't panic if row is missing (shouldn't happen)
+                if r < field_rows && c < field_cols {
                     if let Some(line) = grid.get_mut(r) {
                         if c < line.len() {
-                            // SAFETY: The grid contains only ASCII characters (see CHARS in field.rs),
-                            // so byte indexing equals char indexing. If CHARS is ever extended to
-                            // include multi-byte characters, this must be changed to use char_indices().
                             line.replace_range(c..=c, "O");
-
-                            // Sensors (simple visualization)
-                            // Use i64 for intermediate calculations to prevent overflow on large terminals
-                            let sensor_offset_r = (agent.angle.sin() * 2.0 / scale_y) as i64;
-                            let sensor_offset_c = (agent.angle.cos() * 2.0 / scale_x) as i64;
-                            let sensor_r = (r as i64).saturating_add(sensor_offset_r);
-                            let sensor_c = (c as i64).saturating_add(sensor_offset_c);
-
-                            if sensor_r >= 0
-                                && sensor_r < rows as i64
-                                && sensor_c >= 0
-                                && sensor_c < cols as i64
-                            {
-                                if let Some(s_line) = grid.get_mut(sensor_r as usize) {
-                                    let sc = sensor_c as usize;
-                                    if sc < s_line.len() {
-                                        // SAFETY: Same as above - ASCII-only grid
-                                        s_line.replace_range(sc..=sc, ".");
-                                    }
-                                }
-                            }
                         }
                     }
                 }
             }
 
-            // HUD Info
-            let mean_sense = f64::midpoint(agent.val_l, agent.val_r);
-            let error = mean_sense - TARGET_CONCENTRATION;
-            let hud = format!(
-                "Sens: {:.2} | Tgt: {:.2} | Err: {:.2} | Spd: {:.2} | Egy: {:.2}",
-                mean_sense, TARGET_CONCENTRATION, error, agent.speed, agent.energy
-            );
+            // Create dashboard state
+            let dashboard_state = DashboardState::from_agent(agent, dish);
 
-            draw_ui(f, grid, &hud);
+            // Draw the full dashboard
+            draw_dashboard(f, grid, &dashboard_state);
         })?;
 
         // 3. Input
