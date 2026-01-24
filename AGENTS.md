@@ -46,14 +46,115 @@ We define $F$ based on the **Prediction Error** ($E$) relative to a **Target Set
     $$G_{temp} = \mu_t - \mu_{t-1}$$
     Used to detect if conditions are worsening over time, triggering a "panic turn" even if spatial gradient is zero.
 
-### D. The Dynamics (Action Update)
+### D. Cognitive Architecture
+
+The agent has a multi-layer cognitive architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    COGNITIVE ARCHITECTURE                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│  LAYER 1: SHORT-TERM MEMORY (Ring Buffer)                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │ Last 32 experiences: (val_l, val_r, x, y, energy, tick)             ││
+│  │ Used for: temporal gradient, pattern detection                       ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────────────────┤
+│  LAYER 2: LONG-TERM MEMORY (Spatial Prior Grid)                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │ Grid cells: { mean: f64, m2: f64, visits: u32 }                     ││
+│  │ Size: 20×10 cells (5×5 world units per cell)                        ││
+│  │ Updated via Welford's algorithm for online mean/variance            ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────────────────┤
+│  LAYER 3: EPISODIC MEMORY (Landmark Store)                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │ Landmarks: [Option<Landmark>; 8] (max 8 remembered locations)       ││
+│  │ Landmark: { x, y, peak_nutrient, last_visit_tick, reliability }     ││
+│  │ Triggers: Store when mean_sense > 0.7 (high-nutrient discovery)     ││
+│  │ Used for: Goal-directed navigation when energy low                  ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────────────────┤
+│  LAYER 4: PLANNING (Monte Carlo Tree Search)                            │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │ Rollouts: Simulate N=50 trajectories using learned spatial priors   ││
+│  │ Objective: Maximize expected free energy (exploit + explore)        ││
+│  │ Actions: Discrete heading changes (-45°, 0°, +45°)                  ││
+│  │ Depth: 10 ticks lookahead                                           ││
+│  │ Triggers: Every 20 ticks OR when energy < 0.3 (urgent replanning)   ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────────────────┤
+│  CONTROL INTEGRATION                                                     │
+│  base_error = sensation - TARGET_CONCENTRATION                          │
+│  precision_weighted_error = base_error × prior_precision                │
+│  exploration_bonus = EXPLORATION_SCALE / prior_precision                │
+│  goal_attraction = direction_to_best_landmark (if energy < 0.3)         │
+│  planned_heading = MCTS best action (updated every 20 ticks)            │
+│  d_theta = blend(reactive_control, planned_heading) + goal_attraction   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### E. Mathematical Formulations
+
+#### Spatial Prior Learning (Welford's Algorithm)
+```
+delta = observation - mean
+mean += delta / visits
+delta2 = observation - mean
+m2 += delta * delta2
+
+variance = m2 / (visits - 1)  # if visits >= 2
+precision = visits / (1 + variance)
+```
+
+#### Precision-Weighted Control
+```
+base_error = mean_sense - TARGET_CONCENTRATION
+precision = prior.precision().clamp(MIN_PRECISION, MAX_PRECISION)
+precision_weighted_error = base_error × precision
+
+reactive_d_theta = -LEARNING_RATE × precision_weighted_error × gradient
+```
+
+#### MCTS Expected Free Energy
+For each trajectory τ = [state₁, state₂, ..., stateₙ]:
+```
+G(τ) = pragmatic + EXPLORATION_SCALE × epistemic
+
+pragmatic = Σ prior.mean × state.energy    # prefer high nutrients + survival
+epistemic = Σ 1 / prior.precision          # prefer uncertain regions (info gain)
+```
+Higher values are better (we maximize EFE).
+
+#### Landmark Reliability Decay
+```
+reliability *= LANDMARK_DECAY  # 0.995 per tick when not visited
+reliability = 1.0              # reset on revisit
+```
+
+#### Goal-Directed Navigation
+When energy < MCTS_URGENT_ENERGY (0.3):
+```
+target_angle = atan2(landmark.y - y, landmark.x - x)
+angle_diff = normalize_angle(target_angle - current_angle)
+goal_attraction = LANDMARK_ATTRACTION_SCALE × angle_diff × landmark.reliability
+```
+
+### F. The Dynamics (Action Update)
 The agent updates its heading ($\theta$) and speed ($v$) to minimize the error over time.
 
 **Heading Update:**
-The turning rate is proportional to the Error times the Gradient.
-$$\dot{\theta} = - \text{LEARNING\_RATE} \cdot E \cdot G + \text{Noise} + \text{Panic}$$
-*Noise* is scaled by `NOISE_SCALE` (0.5) and proportional to Error.
-*Panic* is a large random turn (±`PANIC_TURN_RANGE` radians) added if $G_{temp} <$ `PANIC_THRESHOLD` (-0.01).
+The turning rate blends reactive control with planned actions:
+$$\dot{\theta} = (1 - w_p) \cdot \dot{\theta}_{reactive} + w_p \cdot \dot{\theta}_{planned} + \text{Exploration} + \text{Noise} + \text{Panic} + \text{Goal}$$
+
+Where:
+- $\dot{\theta}_{reactive} = - \text{LEARNING\_RATE} \cdot E_{precision} \cdot G$
+- $\dot{\theta}_{planned}$ = MCTS best action angle delta
+- $w_p$ = PLANNING_WEIGHT (0.3)
+- *Exploration* = random direction scaled by inverse precision
+- *Noise* is scaled by `NOISE_SCALE` (0.5) and proportional to Error
+- *Panic* is a large random turn (±`PANIC_TURN_RANGE` radians) if $G_{temp} <$ `PANIC_THRESHOLD` (-0.01)
+- *Goal* = attraction toward remembered landmarks when energy < 0.3
 
 **Speed Update:**
 The agent conserves energy. It only moves when "anxious" (high error).
@@ -68,6 +169,8 @@ $$v = \text{MAX\_SPEED} \cdot |E|$$
 *   All critical calculations are guarded by `assert_finite()` to prevent NaN propagation
 *   Angle normalization uses `rem_euclid(2π)` for numerical stability
 *   Gaussian sigma uses epsilon guard: `sigma_sq.max(f64::EPSILON)`
+*   Spatial priors ignore non-finite observations
+*   M2 values clamped to non-negative
 
 ---
 
@@ -78,9 +181,17 @@ The project structure is strictly modularized to ensure files remain under 200 L
 
 *   `src/main.rs`: Entry point and event loop.
 *   `src/simulation/`:
-    *   `params.rs`: All hyperparameters organized into sections (Sensing, Behavior, Metabolism, Environment).
+    *   `params.rs`: All hyperparameters organized into sections (Sensing, Behavior, Metabolism, Environment, Memory, Learning, Episodic, Planning).
     *   `environment.rs`: `PetriDish` and `NutrientSource` logic with epsilon guards.
-    *   `agent.rs`: `Protozoa` FEP logic with NaN propagation guards.
+    *   `agent.rs`: `Protozoa` FEP logic with NaN propagation guards, memory systems, and MCTS integration.
+    *   `memory/`:
+        *   `mod.rs`: Memory module exports and `SensorSnapshot` type.
+        *   `ring_buffer.rs`: Generic fixed-size ring buffer for short-term memory.
+        *   `spatial_grid.rs`: 2D grid with Welford's online variance for spatial priors.
+        *   `episodic.rs`: Landmark storage and goal-directed navigation support.
+    *   `planning/`:
+        *   `mod.rs`: Planning module exports.
+        *   `mcts.rs`: Monte Carlo Tree Search with Expected Free Energy evaluation.
 *   `src/ui/`:
     *   `field.rs`: Parallelized field calculation (`rayon`).
     *   `render.rs`: `ratatui` draw logic with coordinate transformation.
@@ -109,10 +220,35 @@ The project structure is strictly modularized to ensure files remain under 200 L
     - Integrate `update` -> `compute` -> `draw` loop.
     - Handle input.
 
-#### Step 4: Quality Assurance
+#### Step 4: Memory & Learning Systems
+- [x] **Short-Term Memory:**
+    - Ring buffer implementation for sensor history.
+    - 32-element buffer with O(1) push/access.
+- [x] **Long-Term Memory (Spatial Priors):**
+    - 20×10 grid covering the dish.
+    - Welford's algorithm for online mean/variance.
+    - Precision weighting for confidence.
+- [x] **Episodic Memory:**
+    - Landmark detection (threshold > 0.7).
+    - Reliability decay (0.995 per tick).
+    - Goal-directed navigation when energy low.
+
+#### Step 5: Planning System
+- [x] **MCTS Planner:**
+    - 50 rollouts per action.
+    - 10-step trajectory simulation.
+    - Expected Free Energy evaluation (pragmatic + epistemic).
+- [x] **World Model:**
+    - Uses learned spatial priors (not actual environment).
+    - Discrete actions: TurnLeft, Straight, TurnRight.
+- [x] **Control Integration:**
+    - Blend reactive + planned (30% planning weight).
+    - Replan every 20 ticks or when energy < 0.3.
+
+#### Step 6: Quality Assurance
 - [x] **Linting:** `cargo clippy` (strict).
 - [x] **Formatting:** `cargo fmt`.
-- [x] **Tests:** `cargo test` passes.
+- [x] **Tests:** `cargo test` passes (94 tests across 8 test files).
 
 ---
 

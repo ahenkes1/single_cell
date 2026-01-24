@@ -8,7 +8,7 @@ All commands run from `protozoa_rust/` directory:
 
 ```bash
 cargo run --release      # Run simulation (use --release for optimal frame rates)
-cargo test               # Run all tests (22 tests across 4 test files)
+cargo test               # Run all tests (94 tests across 8 test files)
 cargo fmt                # Format code
 cargo clippy -- -D warnings  # Lint (strict, warnings as errors)
 ```
@@ -26,13 +26,25 @@ This is an Active Inference biological simulation where a single-cell agent (Pro
 ### Core Modules
 
 **`simulation/`** - Domain logic
-- `agent.rs`: Protozoa struct implementing Active Inference. Key algorithm: `update_state()` calculates prediction error, spatial gradient (left-right sensor difference), and temporal gradient to drive heading/speed updates. Includes NaN propagation guards via `assert_finite()` helper function.
+- `agent.rs`: Protozoa struct implementing Active Inference with memory systems and MCTS planning. Key algorithm: `update_state()` calculates precision-weighted prediction error, spatial gradient, temporal gradient, MCTS planning, and goal-directed navigation. Includes NaN propagation guards via `assert_finite()` helper function.
 - `environment.rs`: PetriDish with multiple NutrientSource Gaussian blobs. Concentration at (x,y) is sum of Gaussians. Sources decay, drift via Brownian motion, and respawn when depleted. Includes epsilon guard for near-zero radius.
 - `params.rs`: All simulation hyperparameters organized into sections:
   - **Sensing**: `TARGET_CONCENTRATION` (0.8), `SENSOR_DIST`, `SENSOR_ANGLE`, `LEARNING_RATE`, `MAX_SPEED`
   - **Behavior**: `PANIC_THRESHOLD`, `PANIC_TURN_RANGE`, `NOISE_SCALE`, `EXHAUSTION_THRESHOLD`, `EXHAUSTION_SPEED_FACTOR`
   - **Metabolism**: `BASE_METABOLIC_COST`, `SPEED_METABOLIC_COST`, `INTAKE_RATE`
   - **Environment**: `DISH_WIDTH/HEIGHT`, `SOURCE_MARGIN`, `SOURCE_RADIUS_MIN/MAX`, `SOURCE_INTENSITY_MIN/MAX`, `SOURCE_DECAY_MIN/MAX`, `BROWNIAN_STEP`, `RESPAWN_THRESHOLD`, `SOURCE_COUNT_MIN/MAX`
+  - **Memory**: `HISTORY_SIZE` (32), `GRID_WIDTH` (20), `GRID_HEIGHT` (10)
+  - **Learning**: `PRIOR_LEARNING_RATE`, `EXPLORATION_SCALE`, `MIN_PRECISION`, `MAX_PRECISION`
+  - **Episodic**: `MAX_LANDMARKS` (8), `LANDMARK_THRESHOLD`, `LANDMARK_DECAY`, `LANDMARK_ATTRACTION_SCALE`, `LANDMARK_VISIT_RADIUS`
+  - **Planning**: `MCTS_ROLLOUTS` (50), `MCTS_DEPTH` (10), `MCTS_REPLAN_INTERVAL` (20), `MCTS_URGENT_ENERGY`, `PLANNING_WEIGHT`
+
+**`simulation/memory/`** - Memory systems
+- `ring_buffer.rs`: Generic fixed-size circular buffer for short-term memory
+- `spatial_grid.rs`: 2D grid with Welford's online variance algorithm for spatial priors
+- `episodic.rs`: Landmark storage with reliability decay for goal-directed navigation
+
+**`simulation/planning/`** - Planning systems
+- `mcts.rs`: Monte Carlo Tree Search with Expected Free Energy (pragmatic + epistemic value)
 
 **`ui/`** - Rendering
 - `field.rs`: Parallel grid computation using `rayon`. Maps concentration values to ASCII density characters
@@ -44,12 +56,22 @@ This is an Active Inference biological simulation where a single-cell agent (Pro
 
 The agent uses stereo chemical sensors (left/right at configurable angle offset). Each tick:
 1. Error = mean_sense - TARGET_CONCENTRATION (0.8)
-2. Gradient = left_sensor - right_sensor
-3. Heading change = -LEARNING_RATE * error * gradient + noise + panic_turn
-4. Speed = MAX_SPEED * |error|
-5. Angle normalized using `rem_euclid(2π)` for numerical stability
+2. Precision = learned confidence from spatial prior grid
+3. Precision-weighted error = error × precision
+4. Gradient = left_sensor - right_sensor
+5. MCTS plans best action using learned priors as world model
+6. Heading change = blend(reactive, planned) + exploration + noise + panic_turn + goal_attraction
+7. Speed = MAX_SPEED * |error|
+8. Update spatial priors with observation (Welford's algorithm)
+9. Update episodic memory (landmark detection, decay, visit updates)
+10. Angle normalized using `rem_euclid(2π)` for numerical stability
 
 Boundary sensing returns -1.0 (toxic void) to create repulsion.
+
+**MCTS Expected Free Energy**: For each trajectory τ:
+- Pragmatic value: Σ prior.mean × state.energy (prefer high nutrients + survival)
+- Epistemic value: Σ 1/precision (prefer uncertainty reduction)
+- G(τ) = pragmatic + EXPLORATION_SCALE × epistemic
 
 ### Numerical Safety
 
@@ -60,9 +82,13 @@ Boundary sensing returns -1.0 (toxic void) to create repulsion.
 
 ### Test Coverage
 
-22 tests across 4 files covering:
+94 tests across 8 files covering:
 - Agent: initialization, sensing, movement, energy, exhaustion, boundary clamping, angle normalization, temporal gradient, speed-error correlation
 - Environment: initialization, concentration bounds, boundaries, Gaussian properties, source decay/respawn, Brownian motion bounds
+- Memory: ring buffer operations, spatial grid updates, Welford's variance, precision calculation
+- Episodic: landmark creation, decay, refresh, storage replacement, goal navigation
+- Planning: MCTS rollouts, Expected Free Energy, action selection, trajectory validity
+- Integration: cognitive stack integration, performance benchmarks, numerical stability
 - Rendering: grid computation, coordinate transformation
 
 ### Code Style

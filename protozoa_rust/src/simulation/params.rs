@@ -1,5 +1,8 @@
 //! Simulation hyperparameters.
 
+// Allow unused constants - these will be used in future tasks (MCTS, goal-directed navigation)
+#![allow(dead_code)]
+
 // === Agent Sensing Parameters ===
 pub const TARGET_CONCENTRATION: f64 = 0.8;
 pub const SENSOR_DIST: f64 = 2.0;
@@ -54,3 +57,45 @@ pub const RESPAWN_THRESHOLD: f64 = 0.05;
 pub const SOURCE_COUNT_MIN: usize = 5;
 /// Maximum number of nutrient sources in dish
 pub const SOURCE_COUNT_MAX: usize = 10;
+
+// === Memory Parameters ===
+/// Size of sensor history ring buffer
+pub const HISTORY_SIZE: usize = 32;
+/// Width of spatial prior grid (cells)
+pub const GRID_WIDTH: usize = 20;
+/// Height of spatial prior grid (cells)
+pub const GRID_HEIGHT: usize = 10;
+
+// === Learning Parameters ===
+/// Learning rate for spatial prior updates (Hebbian-like)
+pub const PRIOR_LEARNING_RATE: f64 = 0.1;
+/// Scale factor for exploration bonus in uncertain regions
+pub const EXPLORATION_SCALE: f64 = 0.3;
+/// Minimum precision value (prevents division by zero)
+pub const MIN_PRECISION: f64 = 0.1;
+/// Maximum precision value (prevents over-confidence)
+pub const MAX_PRECISION: f64 = 10.0;
+
+// === Episodic Memory Parameters ===
+/// Maximum number of landmarks to remember
+pub const MAX_LANDMARKS: usize = 8;
+/// Minimum nutrient concentration to trigger landmark storage
+pub const LANDMARK_THRESHOLD: f64 = 0.7;
+/// Reliability decay rate per tick (when not visited)
+pub const LANDMARK_DECAY: f64 = 0.995;
+/// Scale factor for goal-directed navigation toward landmarks
+pub const LANDMARK_ATTRACTION_SCALE: f64 = 0.5;
+/// Distance threshold for considering a landmark "visited"
+pub const LANDMARK_VISIT_RADIUS: f64 = 5.0;
+
+// === Planning Parameters ===
+/// Number of MCTS rollouts per planning step
+pub const MCTS_ROLLOUTS: usize = 50;
+/// Maximum depth for MCTS trajectory simulation
+pub const MCTS_DEPTH: usize = 10;
+/// Ticks between replanning (unless urgent)
+pub const MCTS_REPLAN_INTERVAL: u64 = 20;
+/// Energy threshold below which replanning becomes urgent
+pub const MCTS_URGENT_ENERGY: f64 = 0.3;
+/// Weight for blending planned action with reactive control
+pub const PLANNING_WEIGHT: f64 = 0.3;
