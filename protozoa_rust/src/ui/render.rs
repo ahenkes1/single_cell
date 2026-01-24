@@ -2,6 +2,7 @@ use crate::simulation::agent::AgentMode;
 use crate::simulation::memory::CellPrior;
 use crate::simulation::params::{MCTS_DEPTH, MCTS_ROLLOUTS};
 use crate::simulation::planning::{Action, ActionDetail};
+use crate::ui::LandmarkSnapshot;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -176,6 +177,40 @@ pub fn format_mcts_summary(details: &[ActionDetail], ticks_until_replan: u64) ->
     } else {
         vec!["No plan data".to_string()]
     }
+}
+
+/// Formats landmarks as a list table.
+#[must_use]
+#[allow(dead_code)] // Used by tests and will be used by dashboard renderer
+#[allow(clippy::cast_possible_truncation)]
+pub fn format_landmarks_list(
+    landmarks: &[LandmarkSnapshot],
+    nav_target: Option<usize>,
+) -> Vec<String> {
+    let mut lines = vec![
+        " # │ Pos     │Rel │Vis".to_string(),
+        "───┼─────────┼────┼───".to_string(),
+    ];
+
+    for (i, lm) in landmarks.iter().enumerate() {
+        let prefix = if nav_target == Some(i) { "→" } else { " " };
+        lines.push(format!(
+            "{}{} │({:>3},{:>3})│.{:02}│ {}",
+            prefix,
+            i + 1,
+            lm.x as i32,
+            lm.y as i32,
+            (lm.reliability * 100.0) as i32 % 100,
+            lm.visit_count
+        ));
+    }
+
+    // Pad with empty slots up to 8
+    for i in landmarks.len()..8 {
+        lines.push(format!(" {} │   --    │ -- │ -", i + 1));
+    }
+
+    lines
 }
 
 pub fn draw_ui(f: &mut Frame, grid_lines: Vec<String>, hud_info: &str) {

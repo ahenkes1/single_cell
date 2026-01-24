@@ -4,9 +4,11 @@ use protozoa_rust::simulation::memory::CellPrior;
 use protozoa_rust::simulation::params::{DISH_HEIGHT, DISH_WIDTH};
 use protozoa_rust::simulation::planning::{Action, ActionDetail};
 use protozoa_rust::ui::DashboardState;
+use protozoa_rust::ui::LandmarkSnapshot;
 use protozoa_rust::ui::field::compute_field_grid;
 use protozoa_rust::ui::render::{
-    compute_quadrant_layout, format_mcts_summary, format_metrics_overlay, render_spatial_grid_lines,
+    compute_quadrant_layout, format_landmarks_list, format_mcts_summary, format_metrics_overlay,
+    render_spatial_grid_lines,
 };
 use ratatui::layout::Rect;
 
@@ -128,4 +130,29 @@ fn test_mcts_summary_format() {
     // Should have lines for best action, G, Prag, Epis, Rolls, Depth, Replan
     assert!(lines.len() >= 5);
     assert!(lines[0].contains("Best"));
+}
+
+#[test]
+fn test_landmarks_list_format() {
+    let landmarks = vec![
+        LandmarkSnapshot {
+            x: 12.0,
+            y: 8.0,
+            reliability: 0.92,
+            visit_count: 4,
+        },
+        LandmarkSnapshot {
+            x: 3.0,
+            y: 18.0,
+            reliability: 0.67,
+            visit_count: 2,
+        },
+    ];
+
+    let lines = format_landmarks_list(&landmarks, Some(0));
+
+    // Should have header + landmarks
+    assert!(lines.len() >= 3);
+    // First landmark should have nav arrow
+    assert!(lines[2].starts_with('→'));
 }
