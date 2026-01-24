@@ -8,7 +8,7 @@ All commands run from `protozoa_rust/` directory:
 
 ```bash
 cargo run --release      # Run simulation (use --release for optimal frame rates)
-cargo test               # Run all tests (116 tests across 8 test files)
+cargo test               # Run all tests (136 tests across 9 test files)
 cargo fmt                # Format code
 cargo clippy -- -D warnings  # Lint (strict, warnings as errors)
 ```
@@ -40,14 +40,28 @@ cargo test                    # Run full test suite
 2. Re-run all three checks
 3. Only commit when all pass
 
+## Mandatory Documentation Updates
+
+**CRITICAL: After EVERY implementation, update all relevant documentation:**
+
+- **CLAUDE.md** - Architecture overview, module descriptions, test counts
+- **AGENTS.md** - Mathematical formulas, algorithmic specifications
+- **README.md** - Features, configuration, user-facing documentation
+
+**Requirements:**
+- Documentation must accurately reflect the current implementation
+- Test counts must be updated when tests are added
+- New modules/features must be documented in all relevant files
+- Mathematical formulas must match the actual code
+
 ## Architecture Overview
 
-This is an Active Inference biological simulation where a single-cell agent (Protozoa) navigates a nutrient-rich petri dish using the Free Energy Principle. The agent minimizes prediction error between its sensory input and homeostatic target rather than following hard-coded rules.
+This is a genuine Active Inference biological simulation where a single-cell agent (Protozoa) navigates a nutrient-rich petri dish using the Free Energy Principle. The agent maintains Gaussian beliefs over hidden states and minimizes Variational Free Energy through gradient descent, selecting actions by minimizing Expected Free Energy.
 
 ### Core Modules
 
 **`simulation/`** - Domain logic
-- `agent.rs`: Protozoa struct implementing Active Inference with memory systems and MCTS planning. Key algorithm: `update_state()` calculates precision-weighted prediction error, spatial gradient, temporal gradient, MCTS planning, and goal-directed navigation. Includes NaN propagation guards via `assert_finite()` helper function.
+- `agent.rs`: Protozoa struct implementing Continuous Active Inference with Gaussian beliefs, memory systems, and MCTS planning. Key algorithm: `update_state()` performs VFE gradient descent on beliefs, updates precision estimates, selects actions via EFE, and executes movement. Includes NaN propagation guards via `assert_finite()` helper function.
 - `environment.rs`: PetriDish with multiple NutrientSource Gaussian blobs. Concentration at (x,y) is sum of Gaussians. Sources decay, drift via Brownian motion, and respawn when depleted. Includes epsilon guard for near-zero radius.
 - `params.rs`: All simulation hyperparameters organized into sections:
   - **Sensing**: `TARGET_CONCENTRATION` (0.8), `SENSOR_DIST`, `SENSOR_ANGLE`, `LEARNING_RATE`, `MAX_SPEED`
@@ -58,6 +72,13 @@ This is an Active Inference biological simulation where a single-cell agent (Pro
   - **Learning**: `PRIOR_LEARNING_RATE`, `EXPLORATION_SCALE`, `MIN_PRECISION`, `MAX_PRECISION`
   - **Episodic**: `MAX_LANDMARKS` (8), `LANDMARK_THRESHOLD`, `LANDMARK_DECAY`, `LANDMARK_ATTRACTION_SCALE`, `LANDMARK_VISIT_RADIUS`
   - **Planning**: `MCTS_ROLLOUTS` (50), `MCTS_DEPTH` (10), `MCTS_REPLAN_INTERVAL` (20), `MCTS_URGENT_ENERGY`, `PLANNING_WEIGHT`
+  - **Active Inference**: `BELIEF_LEARNING_RATE` (0.15), `MAX_VFE` (5.0), `INITIAL_SENSORY_PRECISION` (5.0), `NUTRIENT_PRIOR_PRECISION` (2.0), `MIN/MAX_SENSORY_PRECISION`, `UNCERTAINTY_GROWTH/REDUCTION`
+
+**`simulation/inference/`** - Active Inference engine
+- `beliefs.rs`: Gaussian belief state q(s) = N(μ, Σ) with `BeliefState`, `BeliefMean`, `BeliefCovariance`. Methods for gradient descent updates and uncertainty management.
+- `generative_model.rs`: Generative model p(o,s) = p(o|s)×p(s) with `PriorMean`, `PriorPrecision`, `SensoryPrecision`. Observation function g(s) and Jacobian ∂g/∂s.
+- `free_energy.rs`: Variational Free Energy F, VFE gradient ∂F/∂μ, Expected Free Energy G(π), and prediction error computation.
+- `precision.rs`: Online precision estimation from prediction errors using exponential moving average.
 
 **`simulation/memory/`** - Memory systems
 - `ring_buffer.rs`: Generic fixed-size circular buffer for short-term memory
@@ -83,24 +104,36 @@ This is an Active Inference biological simulation where a single-cell agent (Pro
 
 ### Key Mathematical Concepts
 
+**Variational Free Energy (VFE):**
+```
+F = ½(o - g(μ))ᵀ Πₒ (o - g(μ)) + ½(μ - η)ᵀ Πη (μ - η)
+```
+Where: o = observations, g(μ) = predicted observations, Πₒ = sensory precision, μ = belief mean, η = prior mean, Πη = prior precision.
+
+**Belief Update (Gradient Descent on VFE):**
+```
+dμ/dt = -∂F/∂μ = Πₒ × J × (o - g(μ)) - Πη × (μ - η)
+```
+Where J = observation Jacobian ∂g/∂μ.
+
+**Expected Free Energy (EFE) for Action Selection:**
+```
+G(π) = Risk + Ambiguity - Epistemic
+Risk = deviation from preferred nutrient concentration
+Ambiguity = uncertainty in predicted observations
+Epistemic = information gain (uncertainty reduction)
+```
+
 The agent uses stereo chemical sensors (left/right at configurable angle offset). Each tick:
-1. Error = mean_sense - TARGET_CONCENTRATION (0.8)
-2. Precision = learned confidence from spatial prior grid
-3. Precision-weighted error = error × precision
-4. Gradient = left_sensor - right_sensor
-5. MCTS plans best action using learned priors as world model
-6. Heading change = blend(reactive, planned) + exploration + noise + panic_turn + goal_attraction
-7. Speed = MAX_SPEED * |error|
-8. Update spatial priors with observation (Welford's algorithm)
-9. Update episodic memory (landmark detection, decay, visit updates)
-10. Angle normalized using `rem_euclid(2π)` for numerical stability
+1. **Infer**: Compute VFE gradient and update Gaussian beliefs via gradient descent
+2. **Learn**: Update sensory precision from prediction errors (EMA)
+3. **Plan**: Evaluate actions by Expected Free Energy, select minimum
+4. **Act**: Blend reactive gradient + planned action + exploration + panic + goal attraction
+5. **Update**: Spatial priors (Welford), episodic memory (landmarks), position
+6. Speed = MAX_SPEED × (VFE / MAX_VFE), clamped to [0, 1]
+7. Angle normalized using `rem_euclid(2π)` for numerical stability
 
 Boundary sensing returns -1.0 (toxic void) to create repulsion.
-
-**MCTS Expected Free Energy**: For each trajectory τ:
-- Pragmatic value: Σ prior.mean × state.energy (prefer high nutrients + survival)
-- Epistemic value: Σ 1/precision (prefer uncertainty reduction)
-- G(τ) = pragmatic + EXPLORATION_SCALE × epistemic
 
 ### Numerical Safety
 
@@ -111,8 +144,9 @@ Boundary sensing returns -1.0 (toxic void) to create repulsion.
 
 ### Test Coverage
 
-116 tests across 8 files covering:
+136 tests across 9 files covering:
 - Agent: initialization, sensing, movement, energy, exhaustion, boundary clamping, angle normalization, temporal gradient, speed-error correlation
+- Inference: belief state operations, VFE computation, VFE gradient descent, EFE evaluation, prediction errors, precision estimation
 - Environment: initialization, concentration bounds, boundaries, Gaussian properties, source decay/respawn, Brownian motion bounds
 - Memory: ring buffer operations, spatial grid updates, Welford's variance, precision calculation
 - Episodic: landmark creation, decay, refresh, storage replacement, goal navigation
